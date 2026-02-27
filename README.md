@@ -1,6 +1,6 @@
 # neuroguard
 
-dementia care project, application for paitents and caregivers
+dementia care project, application for patients and caregivers
 
 ## Getting Started
 
