@@ -1,4 +1,4 @@
-# neuroguard
+#neuroguard
 
 dementia care project, application for patients and caregivers
 
