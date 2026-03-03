@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'caregiver_home.dart';
 
 void main() {
@@ -15,7 +16,9 @@ class NeuroGuardApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        fontFamily: 'Arial',
+        textTheme: GoogleFonts.robotoTextTheme(
+          Theme.of(context).textTheme,
+        ),
       ),
       home: const CaregiverHomePage(),
     );

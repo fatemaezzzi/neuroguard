@@ -1,38 +1,33 @@
 import 'package:flutter/material.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
 //  COLOUR TOKENS
-// ─────────────────────────────────────────────────────────────────────────────
-const Color kBg = Color(0xFF0A0A0A);
-const Color kLime = Color(0xFFCCFF00);
-const Color kPurple = Color(0xFF8B3FDB);
-const Color kCream = Color(0xFFF2EDE0);
+// =============================================================================
+const Color kBg    = Color(0xFF0A0A0A);
+const Color kLime  = Color(0xFFCCFF00);
 const Color kWhite = Color(0xFFFFFFFF);
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  IMAGE ASSET PATHS  (drop your Figma-exported PNGs here)
-// ─────────────────────────────────────────────────────────────────────────────
-//  Place these files in:  assets/images/
-//  Register in pubspec.yaml under flutter > assets:
-//    - assets/images/blob_lime_star.png
-//    - assets/images/blob_purple_squircle.png
-//    - assets/images/blob_cream_flower.png
-//    - assets/images/blob_purple_petal.png
-const String kImgLimeStar = 'assets/images/blob_lime_star.png';
-const String kImgPurpleSquircle = 'assets/images/blob_purple_squircle.png';
-const String kImgCreamFlower = 'assets/images/blob_cream_flower.png';
-const String kImgPurplePetal = 'assets/images/blob_purple_petal.png';
+// =============================================================================
+//  ASSET PATHS  --  exact filenames from assets/ folder
+// =============================================================================
+const String kImgHeroBlob    = 'assets/top hero blob.png';
+const String kImgLocate      = 'assets/locate-button.png';
+const String kImgSpyCall     = 'assets/color_4_.png';
+const String kImgSnapTrigger = 'assets/snaptriggerbutton.png';
+const String kImgVitals      = 'assets/vitals-button.png';
+const String kImgReports     = 'assets/reports-button.png';
+const String kImgAllAbout    = 'assets/all-about-dementia-button.png';
+const String kImgNavHome     = 'assets/Vectorhome.png';
+const String kImgNavSettings = 'assets/Vectorsettings.png';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  FONT  – Use a bold condensed font like "Space Grotesk" or "Bebas Neue"
-//          Add to pubspec.yaml and google_fonts package, or replace with
-//          your project's font family.
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
+//  APP ENTRY
+// =============================================================================
+void main() => runApp(const NeuroGuardApp());
 
-void main() => runApp(const _App());
+class NeuroGuardApp extends StatelessWidget {
+  const NeuroGuardApp({super.key});
 
-class _App extends StatelessWidget {
-  const _App();
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -43,9 +38,10 @@ class _App extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
 //  CAREGIVER HOME PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+//  Wrapped in SingleChildScrollView so it never overflows on small screens.
+// =============================================================================
 class CaregiverHomePage extends StatelessWidget {
   const CaregiverHomePage({super.key});
 
@@ -53,35 +49,402 @@ class CaregiverHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
+      // Bottom nav stays fixed; only the content above scrolls
+      bottomNavigationBar: const BottomNavBar(),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        top: false,
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: const [
+
+              // 1. HERO BLOB  (no horizontal padding -- bleeds full width)
+              HeroBlob(),
+
+              SizedBox(height: 30),
+
+              // 2. SPY CALL | LOCATE | SNAP TRIGGER
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: QuickActionRow(),
+              ),
+
+              SizedBox(height: 20),
+
+              // 3. VITALS BANNER
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: VitalsBanner(),
+              ),
+
+              SizedBox(height: 20),
+
+              // 4. REPORTS | ALL ABOUT DEMENTIA
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: BottomBlobRow(),
+              ),
+
+              SizedBox(height: 5),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  1. HERO BLOB
+//  The lime blob PNG bleeds full width. Text sits dead-centre over it.
+//  Height is kept proportional: roughly 42% of a 680px screen = ~200px.
+// =============================================================================
+class HeroBlob extends StatelessWidget {
+  const HeroBlob({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Use LayoutBuilder so the blob scales correctly on every screen width
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Blob height = 62% of its width (matches the original aspect ratio)
+        final double blobHeight = constraints.maxWidth * 0.90;
+
+        return SizedBox(
+          height: blobHeight,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Blob PNG -- fill full width, no padding
+              Positioned.fill(
+                child: Image.asset(
+                  kImgHeroBlob,
+                  fit: BoxFit.fill,
+                  alignment: Alignment.center,
+                ),
+              ),
+              // Greeting text
+              const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Hey Sasha,',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: kBg,
+                      fontFamily: 'MicrosoftSansSerifBold',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
+                  Text(
+                    'Check up on Raj.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: kBg,
+                      fontFamily: 'MicrosoftSansSerifBold',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+//  2. QUICK ACTION ROW
+//
+//  Layout (from screenshot):
+//    [  SPY CALL  ] [   LOCATE   ] [ SNAP TRIGGER ]
+//
+//  - SPY CALL  : Expanded, height 82px, uses color_4_.png  (cream shape)
+//  - LOCATE    : Fixed 100x100, uses locate-button.png, label on top
+//  - SNAP TRIG : Expanded, height 82px, uses snaptriggerbutton.png
+//
+//  The LOCATE blob is vertically centred and slightly taller than the side tiles.
+// =============================================================================
+class QuickActionRow extends StatelessWidget {
+  const QuickActionRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const double rowH    = 100; // total row height driven by locate blob
+    const double sideH   = 80;  // side tiles are slightly shorter
+    const double locateW = 100;
+    const double locateH = 100;
+
+    return SizedBox(
+      height: rowH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+
+          // SPY CALL
+          Expanded(
+            child: GestureDetector(
+              onTap: () {},
+              child: SizedBox(
+                height: sideH,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // PNG provides the cream blob shape
+                    Positioned.fill(
+                      child: Image.asset(
+                        kImgSpyCall,
+                        fit: BoxFit.fill,
+                      ),
+                    ),
+                    const Text(
+                      'SPY\nCALL',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        height: 1.35,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // LOCATE
+          GestureDetector(
+            onTap: () {},
+            child: SizedBox(
+              width: locateW,
+              height: locateH,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.asset(
+                    kImgLocate,
+                    width: locateW,
+                    height: locateH,
+                    fit: BoxFit.contain,
+                  ),
+                  const Text(
+                    'LOCATE',
+                    style: TextStyle(
+                      color: kWhite,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // SNAP TRIGGER
+          Expanded(
+            child: GestureDetector(
+              onTap: () {},
+              child: SizedBox(
+                height: sideH,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Positioned.fill(
+                      child: Image.asset(
+                        kImgSnapTrigger,
+                        fit: BoxFit.fill,
+                      ),
+                    ),
+                    const Text(
+                      'SNAP\nTRIGGER',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        height: 1.35,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  3. VITALS BANNER
+//  Full-width image, "VITALS" label left-aligned.
+//  Height ~80px matches the original.
+// =============================================================================
+class VitalsBanner extends StatelessWidget {
+  const VitalsBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {},
+      child: Container(
+        height: 80,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF6B3FD4), // purple matching the original
+          borderRadius: BorderRadius.circular(18),
+        ),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        child: const Text(
+          'VITALS',
+          style: TextStyle(
+            color: kWhite,
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  4. BOTTOM BLOB ROW
+//  Two blobs side by side, each ~140px, spaced evenly.
+//  REPORTS label is dark (blob is cream).
+//  ALL ABOUT DEMENTIA label is white (blob is purple).
+// =============================================================================
+class BottomBlobRow extends StatelessWidget {
+  const BottomBlobRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Each blob takes ~45% of available width so they sit naturally spaced
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double blobSize = constraints.maxWidth * 0.44;
+
+        return SizedBox(
+          height: blobSize,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+
+              // REPORTS
+              GestureDetector(
+                onTap: () {},
+                child: SizedBox(
+                  width: blobSize,
+                  height: blobSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.asset(
+                        kImgReports,
+                        width: blobSize,
+                        height: blobSize,
+                        fit: BoxFit.contain,
+                      ),
+                      const Text(
+                        'REPORTS',
+                        style: TextStyle(
+                          color: kBg,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ALL ABOUT DEMENTIA
+              GestureDetector(
+                onTap: () {},
+                child: SizedBox(
+                  width: blobSize,
+                  height: blobSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.asset(
+                        kImgAllAbout,
+                        width: blobSize,
+                        height: blobSize,
+                        fit: BoxFit.contain,
+                      ),
+                      const Text(
+                        'ALL\nABOUT\nDEMENTIA',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kWhite,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.4,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+//  5. BOTTOM NAV BAR  (fixed via Scaffold.bottomNavigationBar)
+//  Home  = lime filled circle  |  Settings = lime outlined circle
+// =============================================================================
+class BottomNavBar extends StatelessWidget {
+  const BottomNavBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        color: kBg,
+        padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // ── 1. HERO BLOB ──────────────────────────────────────────────
-            _HeroBlob(),
-
-            // ── 2. SPY CALL | LOCATE | SNAP TRIGGER ──────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: _QuickActionRow(),
+            NavImageButton(
+              imgPath: kImgNavHome,
+              isActive: true,
+              onTap: () {},
             ),
-
-            // ── 3. VITALS BANNER ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: _VitalsBanner(),
+            NavImageButton(
+              imgPath: kImgNavSettings,
+              isActive: false,
+              onTap: () {},
             ),
-
-            // ── 4. REPORTS | ALL ABOUT DEMENTIA ──────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: _BottomBlobRow(),
-            ),
-
-            const Spacer(),
-
-            // ── 5. BOTTOM NAV ─────────────────────────────────────────────
-            _BottomNavBar(),
           ],
         ),
       ),
@@ -89,347 +452,14 @@ class CaregiverHomePage extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  1 · HERO BLOB
-//      The lime PNG is full-width, text sits centred on top of it.
-// ─────────────────────────────────────────────────────────────────────────────
-class _HeroBlob extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 200,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Lime star PNG — fill the full area
-          Positioned.fill(
-            child: Image.asset(
-              kImgLimeStar,
-              fit: BoxFit.contain,
-            ),
-          ),
-          // Greeting text centred over blob
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Text(
-                'Hey Sasha,',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: kBg,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-              Text(
-                'Check up on Raj.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: kBg,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  2 · QUICK ACTION ROW
-//      ┌──────────────┐  ┌────────────────┐  ┌──────────────┐
-//      │  SPY CALL    │  │    LOCATE      │  │ SNAP TRIGGER │
-//      │  (cream)     │  │  (purple blob) │  │  (cream)     │
-//      └──────────────┘  └────────────────┘  └──────────────┘
-//
-//  Layout rules from screenshot:
-//   • SPY CALL & SNAP TRIGGER are equal-width cream tiles, height ≈ 80
-//   • LOCATE blob sits in the centre column, slightly taller (≈ 100)
-//   • The cream tiles have organic bottom corners (pill-like on one side)
-// ─────────────────────────────────────────────────────────────────────────────
-class _QuickActionRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    // Fixed height for the whole row — driven by the taller centre blob
-    const double rowHeight = 104;
-    const double sideHeight = 80;
-    const double blobSize = 104; // LOCATE blob is square
-
-    return SizedBox(
-      height: rowHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-      // ── SPY CALL ──────────────────────────────────────────────────
-      Expanded(
-      child: Align(
-      alignment: Alignment.centerLeft,
-        child: _CreамTile(
-        label: 'SPY\nCALL',
-        height: sideHeight,
-        // top-left & top-right square; bottom-left rounded pill;
-        // bottom-right square (butts against LOCATE)
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(18),
-          topRight: Radius.circular(10),
-          bottomLeft: Radius.circular(40),
-          bottomRight: Radius.circular(10),
-        ),
-        onTap: () {},
-      ),
-    ),
-    ),
-
-    const SizedBox(width: 8),
-
-    // ── LOCATE (purple blob PNG) ──────────────────────────────────
-    GestureDetector(
-    onTap: () {},
-    child: SizedBox(
-    width: blobSize,
-    height: blobSize,
-    child: Stack(
-    alignment: Alignment.center,
-    children: [
-    Image.asset(
-    kImgPurpleSquircle,
-    width: blobSize,
-    height: blobSize,
-    fit: BoxFit.contain,
-    ),
-    const Text(
-    'LOCATE',
-    style: TextStyle(
-    color: kWhite,
-    fontSize: 13,
-    fontWeight: FontWeight.w900,
-    letterSpacing: 0.8,
-    ),
-    ),
-    ],
-    ),
-    ),
-    ),
-
-    const SizedBox(width: 8),
-
-    // ── SNAP TRIGGER ──────────────────────────────────────────────
-    Expanded(
-    child: Align(
-    alignment: Alignment.centerRight,
-    child: _CreамTile(
-    label: 'SNAP\nTRIGGER',
-    height: sideHeight,
-    borderRadius: const BorderRadius.only(
-    topLeft: Radius.circular(10),
-    topRight: Radius.circular(18),
-    bottomLeft: Radius.circular(10),
-    bottomRight: Radius.circular(40),
-    ),
-    onTap: () {},
-    ),
-    ),
-    ),
-    ],
-    ),
-    );
-  }
-}
-
-/// Reusable cream action tile
-class _CreамTile extends StatelessWidget {
-final String label;
-final double height;
-final BorderRadius borderRadius;
-final VoidCallback onTap;
-
-const _CreамTile({
-  required this.label,
-  required this.height,
-  required this.borderRadius,
-  required this.onTap,
-});
-
-@override
-Widget build(BuildContext context) {
-  return GestureDetector(
-    onTap: onTap,
-    child: Container(
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        color: kCream,
-        borderRadius: borderRadius,
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: kBg,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          height: 1.35,
-          letterSpacing: 0.3,
-        ),
-      ),
-    ),
-  );
-}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  3 · VITALS BANNER
-//      Full-width purple pill, text left-aligned
-// ─────────────────────────────────────────────────────────────────────────────
-class _VitalsBanner extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        height: 78,
-        decoration: BoxDecoration(
-          color: kPurple,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Text(
-          'VITALS',
-          style: TextStyle(
-            color: kWhite,
-            fontSize: 16,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  4 · BOTTOM BLOB ROW
-//      REPORTS (cream flower, left half) | ALL ABOUT DEMENTIA (purple petal, right half)
-//      Both blobs are roughly equal size, each filling their half of the row.
-// ─────────────────────────────────────────────────────────────────────────────
-class _BottomBlobRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    const double blobSize = 140;
-
-    return SizedBox(
-      height: blobSize,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // ── REPORTS (cream flower blob) ───────────────────────────────
-          GestureDetector(
-            onTap: () {},
-            child: SizedBox(
-              width: blobSize,
-              height: blobSize,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Image.asset(
-                    kImgCreamFlower,
-                    width: blobSize,
-                    height: blobSize,
-                    fit: BoxFit.contain,
-                  ),
-                  const Text(
-                    'REPORTS',
-                    style: TextStyle(
-                      color: kBg,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── ALL ABOUT DEMENTIA (purple petal blob) ────────────────────
-          GestureDetector(
-            onTap: () {},
-            child: SizedBox(
-              width: blobSize,
-              height: blobSize,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Image.asset(
-                    kImgPurplePetal,
-                    width: blobSize,
-                    height: blobSize,
-                    fit: BoxFit.contain,
-                  ),
-                  const Text(
-                    'ALL\nABOUT\nDEMENTIA',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: kWhite,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.4,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  5 · BOTTOM NAV BAR
-//      Home icon (lime filled circle) | Settings icon (lime outlined circle)
-// ─────────────────────────────────────────────────────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _NavButton(
-            icon: Icons.home_rounded,
-            isActive: true,
-            onTap: () {},
-          ),
-          _NavButton(
-            icon: Icons.settings_rounded,
-            isActive: false,
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  final IconData icon;
+class NavImageButton extends StatelessWidget {
+  final String imgPath;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavButton({
-    required this.icon,
+  const NavImageButton({
+    super.key,
+    required this.imgPath,
     required this.isActive,
     required this.onTap,
   });
@@ -439,8 +469,8 @@ class _NavButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 52,
-        height: 52,
+        width: 62,
+        height: 62,
         decoration: BoxDecoration(
           color: isActive ? kLime : Colors.transparent,
           shape: BoxShape.circle,
@@ -448,10 +478,12 @@ class _NavButton extends StatelessWidget {
               ? null
               : Border.all(color: kLime, width: 1.8),
         ),
-        child: Icon(
-          icon,
+        padding: const EdgeInsets.all(13),
+        child: Image.asset(
+          imgPath,
+          fit: BoxFit.contain,
           color: isActive ? kBg : kLime,
-          size: 26,
+          colorBlendMode: BlendMode.srcIn,
         ),
       ),
     );
