@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/permission_service.dart';
 import 'caregiver_home.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Required before any async work
+
+  await PermissionService.requestAllPermissions(); // Request mic, camera, location
+
   runApp(const NeuroGuardApp());
 }
 
