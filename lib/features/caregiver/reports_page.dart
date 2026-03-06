@@ -7,15 +7,15 @@ class ReportsPage extends StatelessWidget {
   static const TextStyle _bigBlack = TextStyle(
     fontFamily: 'MicrosoftSansSerifBold',
     fontWeight: FontWeight.w900,
-    fontSize: 22,
-    letterSpacing: 1.5,
+    fontSize: 28,
+    letterSpacing: 1.0,
     color: Colors.black,
   );
 
   static const TextStyle _bigGreen = TextStyle(
     fontFamily: 'MicrosoftSansSerifBold',
     fontWeight: FontWeight.w900,
-    fontSize: 20,
+    fontSize: 28,
     letterSpacing: 1.5,
     color: Color(0xFFCCFF00),
   );
@@ -23,7 +23,7 @@ class ReportsPage extends StatelessWidget {
   static const TextStyle _bigPurple = TextStyle(
     fontFamily: 'MicrosoftSansSerifBold',
     fontWeight: FontWeight.w900,
-    fontSize: 20,
+    fontSize: 28,
     letterSpacing: 1,
     color: Color(0xFF7C3AED),
   );
@@ -34,6 +34,14 @@ class ReportsPage extends StatelessWidget {
     fontSize: 15,
     letterSpacing: 1,
     color: Colors.black,
+  );
+
+  static const TextStyle _medWhite = TextStyle(
+    fontFamily: 'MicrosoftSansSerifBold',
+    fontWeight: FontWeight.w900,
+    fontSize: 15,
+    letterSpacing: 1,
+    color: Colors.white,
   );
 
   static const TextStyle _numberWhite = TextStyle(
@@ -52,14 +60,14 @@ class ReportsPage extends StatelessWidget {
 
   static const TextStyle _timeGreen = TextStyle(
     fontFamily: 'Roboto',
-    fontSize: 14,
+    fontSize: 26,
     fontWeight: FontWeight.w700,
     color: Color(0xFFCCFF00),
   );
 
   static const TextStyle _alertText = TextStyle(
     fontFamily: 'Roboto',
-    fontSize: 14,
+    fontSize: 26,
     fontWeight: FontWeight.w600,
     color: Colors.white,
   );
@@ -141,7 +149,7 @@ class ReportsPage extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: const [
                                 Text('STATUS', style: _bigBlack),
-                                Text('OCCUPIED/\nEMPTY',
+                                Text('OCCUPIED',
                                     textAlign: TextAlign.right,
                                     style: _bigPurple),
                               ],
@@ -159,16 +167,31 @@ class ReportsPage extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      Text('02:30  ', style: _timeGreen),
-                      Text('Emergency Alert\n(Unresponsive)',
-                          style: _alertText),
+                      SizedBox(
+                        width: 150,
+                        child: Text('02:30', style: _timeGreen),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Emergency Alert\n(Unresponsive)',
+                          style: _alertText,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: const [
-                      Text('02:55  ', style: _timeGreen),
-                      Text('Bed Exit Alert', style: _alertText),
+                      SizedBox(
+                        width: 150,
+                        child: Text('02:55', style: _timeGreen),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text('Bed Exit Alert', style: _alertText),
+                      ),
                     ],
                   ),
                 ],
@@ -238,16 +261,13 @@ class ReportsPage extends StatelessWidget {
     });
   }
 
-  // lasttest.png overlaps ON TOP of previoustest.png
-  // previoustest is full width behind
-  // lasttest is left half, slightly taller, sitting on top
+  // LAST TEST purple rect (no image) overlaps ON TOP of previoustest.png
   Widget _buildTestBoxes(double w) {
     // previoustest.png: 342x94
     final double ptH = w * (94 / 342);
-    // lasttest.png: we show it as ~half width square
-    final double ltW = w * 0.46;
-    // lasttest.png is 364x349 — make it roughly square for display
-    final double ltH = ltW * (349 / 364);
+    // last test box: ~46% width, roughly square
+    final double ltW = w * 0.30;
+    final double ltH = ltW; // square-ish purple box
 
     return SizedBox(
       width: w,
@@ -267,7 +287,7 @@ class ReportsPage extends StatelessWidget {
                     width: w, height: ptH, fit: BoxFit.fill),
                 Positioned.fill(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.only(right: 14),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -289,30 +309,26 @@ class ReportsPage extends StatelessWidget {
             ),
           ),
 
-          // LAST TEST — left half, full height, ON TOP of previous test
+          // LAST TEST — purple rounded rect, left half, ON TOP of previous test
           Positioned(
             top: 0,
             left: 0,
             width: ltW,
             height: ltH,
-            child: Stack(
-              children: [
-                Image.asset('assets/lasttest.png',
-                    width: ltW, height: ltH, fit: BoxFit.fill),
-                Positioned(
-                  top: 16,
-                  left: 14,
-                  right: 8,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('LAST TEST', style: _medBlack),
-                      SizedBox(height: 8),
-                      Text('2.8s', style: _numberWhite),
-                    ],
-                  ),
-                ),
-              ],
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              padding: const EdgeInsets.fromLTRB(14, 16, 8, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  Text('LAST TEST', style: _medWhite),
+                  Text('2.8s', style: _numberWhite),
+                ],
+              ),
             ),
           ),
         ],
@@ -416,7 +432,7 @@ class ReportsPage extends StatelessWidget {
               top: 0,
               left: 0,
               right: 0,
-              height: h * 0.27,
+              height: h * 0.23,
               child: const Center(
                 child: Text('WEEKLY SUMMARY', style: _bigBlack),
               ),
