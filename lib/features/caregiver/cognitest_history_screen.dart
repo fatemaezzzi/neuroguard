@@ -95,8 +95,9 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
       'COGNITEST - HISTORY',
       style: TextStyle(
         color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
+        fontSize: 28,
+        fontFamily: 'MicrosoftSanSerifBold',
+        fontWeight: FontWeight.w900,
         letterSpacing: 2,
       ),
     );
@@ -117,7 +118,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
               }),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 25),
                 decoration: BoxDecoration(
                   color: isActive ? _purple : _purpleDim,
                   borderRadius: BorderRadius.circular(24),
@@ -137,7 +138,8 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
-                    fontSize: 13,
+                    fontFamily: 'Roboto',
+                    fontSize: 20,
                     letterSpacing: 1.5,
                   ),
                 ),
@@ -294,7 +296,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                 style: TextStyle(
                   color: _textMuted,
                   fontWeight: FontWeight.w700,
-                  fontSize: 13,
+                  fontSize: 15,
                   letterSpacing: 1,
                 ),
               ),
@@ -306,7 +308,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                   style: TextStyle(
                     color: _textMuted,
                     fontWeight: FontWeight.w700,
-                    fontSize: 13,
+                    fontSize: 15,
                     letterSpacing: 1,
                   ),
                 ),
@@ -353,7 +355,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                               style: const TextStyle(
                                 color: _textPrimary,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 14,
+                                fontSize: 18,
                               ),
                             ),
                             if (isSelected) ...[
@@ -362,7 +364,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                                 'Avg hover time: ${value.toStringAsFixed(1)}s',
                                 style: const TextStyle(
                                   color: _purple,
-                                  fontSize: 11,
+                                  fontSize: 18,
                                   letterSpacing: 0.4,
                                 ),
                               ),
@@ -375,7 +377,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                         style: TextStyle(
                           color: _timeColor(value),
                           fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                          fontSize: 18,
                         ),
                       ),
                       const SizedBox(width: 14),
