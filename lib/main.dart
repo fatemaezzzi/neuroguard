@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'services/permission_service.dart';
+import 'core/services/permission_service.dart';
 import 'caregiver_home.dart';
 import 'vitals_page.dart';
 

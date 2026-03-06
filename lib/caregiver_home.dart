@@ -209,6 +209,7 @@ class QuickActionRow extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: kBg,
+                        fontFamily: 'Roboto',
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                         height: 1.35,
@@ -242,6 +243,7 @@ class QuickActionRow extends StatelessWidget {
                     'LOCATE',
                     style: TextStyle(
                       color: kWhite,
+                      fontFamily: 'Roboto',
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.8,
@@ -276,6 +278,7 @@ class QuickActionRow extends StatelessWidget {
                         color: kBg,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
+                        fontFamily: 'Roboto',
                         height: 1.35,
                         letterSpacing: 0.3,
                       ),
@@ -318,6 +321,7 @@ class VitalsBanner extends StatelessWidget {
           style: TextStyle(
             color: kWhite,
             fontSize: 26,
+            fontFamily: 'Roboto',
             fontWeight: FontWeight.w900,
             letterSpacing: 2.5,
           ),
@@ -370,6 +374,7 @@ class BottomBlobRow extends StatelessWidget {
                         style: TextStyle(
                           color: kBg,
                           fontSize: 26,
+                          fontFamily: 'Roboto',
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.5,
                         ),
@@ -400,6 +405,7 @@ class BottomBlobRow extends StatelessWidget {
                         style: TextStyle(
                           color: kWhite,
                           fontSize: 26,
+                          fontFamily: 'Roboto',
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.4,
                           height: 1.4,
