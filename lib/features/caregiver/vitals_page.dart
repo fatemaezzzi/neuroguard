@@ -1,23 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-void main() {
-  runApp(const NeuroGuardApp());
-}
-
-class NeuroGuardApp extends StatelessWidget {
-  const NeuroGuardApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
-      home: const VitalsPage(),
-    );
-  }
-}
-
 class VitalsPage extends StatelessWidget {
   const VitalsPage({super.key});
 
@@ -51,10 +34,9 @@ class VitalsPage extends StatelessWidget {
     color: Colors.black,
   );
 
-  // Overlap constants — all measured in logical pixels
-  static const double _overlapVeloStatus  = 28.0; // velostat overlaps INTO status
-  static const double _overlapStatusPocket = -23.0; // negative = gap between status and pocket
-  static const double _overlapPocketVibra = 23.0; // pocket overlaps INTO vibration
+  static const double _overlapVeloStatus   = 28.0;
+  static const double _overlapStatusPocket = -23.0;
+  static const double _overlapPocketVibra  = 23.0;
 
   @override
   Widget build(BuildContext context) {
@@ -80,16 +62,14 @@ class VitalsPage extends StatelessWidget {
       builder: (context, constraints) {
         final double w = constraints.maxWidth;
 
-        // Heights derived from each PNG's natural aspect ratio
-        final double h1 = w * (190 / 364); // velostatgraph
-        final double h2 = w * (159 / 364); // statussleeping
-        final double h3 = w * (81  / 364); // pocketcheck
-        final double h4 = w * (151 / 350); // lastvibrationtest
+        final double h1 = w * (190 / 364);
+        final double h2 = w * (159 / 364);
+        final double h3 = w * (81  / 364);
+        final double h4 = w * (151 / 350);
 
-        // Top position of each blob
         final double topVelo   = 0;
         final double topStatus = h1 - _overlapVeloStatus;
-        final double topPocket = topStatus + h2 - _overlapStatusPocket; // flush, small gap = 0
+        final double topPocket = topStatus + h2 - _overlapStatusPocket;
         final double topVibra  = topPocket + h3 - _overlapPocketVibra;
         final double totalHeight = topVibra + h4;
 
@@ -154,7 +134,8 @@ class VitalsPage extends StatelessWidget {
                           children: [
                             const Text('POCKET CHECK', style: _hugeBlack),
                             Image.asset('assets/arrow.png',
-                                width: 30, height: 30,
+                                width: 30,
+                                height: 30,
                                 color: const Color(0xFFCCFF00)),
                           ],
                         ),
@@ -190,7 +171,7 @@ class VitalsPage extends StatelessWidget {
                 ),
               ),
 
-              // ── LAYER 4 (FRONT): velostatgraph on top of status ───────
+              // ── LAYER 4 (FRONT): velostatgraph ───────────────────────
               Positioned(
                 top: topVelo,
                 left: 0,
@@ -265,15 +246,22 @@ class VitalsPage extends StatelessWidget {
   }
 
   Widget _buildBottomNav() {
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: const [
-          _NavCircle(iconAsset: 'assets/Vectorhome.png'),
-          _NavCircle(iconAsset: 'assets/Vectorsettings.png'),
-        ],
+    return Builder(
+      builder: (context) => Container(
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _NavCircle(
+              iconAsset: 'assets/Vectorhome.png',
+              onTap: () => Navigator.pop(context),
+            ),
+            const _NavCircle(
+              iconAsset: 'assets/Vectorsettings.png',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -281,20 +269,24 @@ class VitalsPage extends StatelessWidget {
 
 class _NavCircle extends StatelessWidget {
   final String iconAsset;
-  const _NavCircle({required this.iconAsset});
+  final VoidCallback? onTap;
+  const _NavCircle({required this.iconAsset, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 62,
-      height: 62,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Image.asset('assets/glassbubble.png',
-              width: 62, height: 62, fit: BoxFit.cover),
-          Image.asset(iconAsset, width: 28, height: 28),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        height: 62,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset('assets/glassbubble.png',
+                width: 62, height: 62, fit: BoxFit.cover),
+            Image.asset(iconAsset, width: 28, height: 28),
+          ],
+        ),
       ),
     );
   }
