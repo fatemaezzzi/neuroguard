@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'vitals_page.dart';
+import 'reports_page.dart';
+import 'all_about_dementia.dart'; // contains AllAboutDementiaPage1
 
 // =============================================================================
 //  COLOUR TOKENS
@@ -8,7 +11,7 @@ const Color kLime  = Color(0xFFCCFF00);
 const Color kWhite = Color(0xFFFFFFFF);
 
 // =============================================================================
-//  ASSET PATHS  --  exact filenames from assets/ folder
+//  ASSET PATHS
 // =============================================================================
 const String kImgHeroBlob    = 'assets/top hero blob.png';
 const String kImgLocate      = 'assets/locate-button.png';
@@ -21,35 +24,19 @@ const String kImgNavHome     = 'assets/Vectorhome.png';
 const String kImgNavSettings = 'assets/Vectorsettings.png';
 
 // =============================================================================
-//  APP ENTRY
-// =============================================================================
-void main() => runApp(const NeuroGuardApp());
-
-class NeuroGuardApp extends StatelessWidget {
-  const NeuroGuardApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(scaffoldBackgroundColor: kBg),
-      home: const CaregiverHomePage(),
-    );
-  }
-}
-
-// =============================================================================
 //  CAREGIVER HOME PAGE
-//  Wrapped in SingleChildScrollView so it never overflows on small screens.
 // =============================================================================
 class CaregiverHomePage extends StatelessWidget {
   const CaregiverHomePage({super.key});
+
+  void _go(BuildContext context, Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      // Bottom nav stays fixed; only the content above scrolls
       bottomNavigationBar: const BottomNavBar(),
       body: SafeArea(
         top: false,
@@ -57,36 +44,42 @@ class CaregiverHomePage extends StatelessWidget {
           physics: const ClampingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: const [
+            children: [
 
-              // 1. HERO BLOB  (no horizontal padding -- bleeds full width)
-              HeroBlob(),
-
-              SizedBox(height: 30),
+              // 1. HERO BLOB
+              const HeroBlob(),
+              const SizedBox(height: 30),
 
               // 2. SPY CALL | LOCATE | SNAP TRIGGER
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: QuickActionRow(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: QuickActionRow(
+                  onSpyCall:     () {},  // TODO: wire when SpyCall page is ready
+                  onLocate:      () {},  // TODO: wire when Locate page is ready
+                  onSnapTrigger: () {},  // TODO: wire when SnapTrigger page is ready
+                ),
               ),
+              const SizedBox(height: 20),
 
-              SizedBox(height: 20),
-
-              // 3. VITALS BANNER
+              // 3. VITALS BANNER  →  VitalsPage
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: VitalsBanner(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: VitalsBanner(
+                  onTap: () => _go(context, const VitalsPage()),
+                ),
               ),
-
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
               // 4. REPORTS | ALL ABOUT DEMENTIA
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: BottomBlobRow(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: BottomBlobRow(
+                  onReports:  () => _go(context, const ReportsPage()),
+                  onAllAbout: () => _go(context, const AllAboutDementiaPage1()),
+                ),
               ),
+              const SizedBox(height: 5),
 
-              SizedBox(height: 5),
             ],
           ),
         ),
@@ -97,59 +90,44 @@ class CaregiverHomePage extends StatelessWidget {
 
 // =============================================================================
 //  1. HERO BLOB
-//  The lime blob PNG bleeds full width. Text sits dead-centre over it.
-//  Height is kept proportional: roughly 42% of a 680px screen = ~200px.
 // =============================================================================
 class HeroBlob extends StatelessWidget {
   const HeroBlob({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Use LayoutBuilder so the blob scales correctly on every screen width
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Blob height = 62% of its width (matches the original aspect ratio)
         final double blobHeight = constraints.maxWidth * 0.90;
-
         return SizedBox(
           height: blobHeight,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Blob PNG -- fill full width, no padding
               Positioned.fill(
-                child: Image.asset(
-                  kImgHeroBlob,
-                  fit: BoxFit.fill,
-                  alignment: Alignment.center,
-                ),
+                child: Image.asset(kImgHeroBlob, fit: BoxFit.fill),
               ),
-              // Greeting text
               const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    'Hey Sasha,',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: kBg,
-                      fontFamily: 'MicrosoftSansSerifBold',
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      height: 1.25,
-                    ),
-                  ),
-                  Text(
-                    'Check up on Raj.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: kBg,
-                      fontFamily: 'MicrosoftSansSerifBold',
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      height: 1.25,
-                    ),
-                  ),
+                  Text('Hey Sasha,',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontFamily: 'MicrosoftSansSerifBold',
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                      )),
+                  Text('Check up on Raj.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontFamily: 'MicrosoftSansSerifBold',
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                      )),
                 ],
               ),
             ],
@@ -162,23 +140,23 @@ class HeroBlob extends StatelessWidget {
 
 // =============================================================================
 //  2. QUICK ACTION ROW
-//
-//  Layout (from screenshot):
-//    [  SPY CALL  ] [   LOCATE   ] [ SNAP TRIGGER ]
-//
-//  - SPY CALL  : Expanded, height 82px, uses color_4_.png  (cream shape)
-//  - LOCATE    : Fixed 100x100, uses locate-button.png, label on top
-//  - SNAP TRIG : Expanded, height 82px, uses snaptriggerbutton.png
-//
-//  The LOCATE blob is vertically centred and slightly taller than the side tiles.
 // =============================================================================
 class QuickActionRow extends StatelessWidget {
-  const QuickActionRow({super.key});
+  final VoidCallback onSpyCall;
+  final VoidCallback onLocate;
+  final VoidCallback onSnapTrigger;
+
+  const QuickActionRow({
+    super.key,
+    required this.onSpyCall,
+    required this.onLocate,
+    required this.onSnapTrigger,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const double rowH    = 100; // total row height driven by locate blob
-    const double sideH   = 80;  // side tiles are slightly shorter
+    const double rowH    = 100;
+    const double sideH   = 80;
     const double locateW = 100;
     const double locateH = 100;
 
@@ -191,31 +169,23 @@ class QuickActionRow extends StatelessWidget {
           // SPY CALL
           Expanded(
             child: GestureDetector(
-              onTap: () {},
+              onTap: onSpyCall,
               child: SizedBox(
                 height: sideH,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // PNG provides the cream blob shape
                     Positioned.fill(
-                      child: Image.asset(
-                        kImgSpyCall,
-                        fit: BoxFit.fill,
-                      ),
-                    ),
-                    const Text(
-                      'SPY\nCALL',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontFamily: 'Roboto',
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        height: 1.35,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
+                        child: Image.asset(kImgSpyCall, fit: BoxFit.fill)),
+                    const Text('SPY\nCALL',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kBg,
+                          fontFamily: 'Roboto',
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          height: 1.35,
+                        )),
                   ],
                 ),
               ),
@@ -226,29 +196,23 @@ class QuickActionRow extends StatelessWidget {
 
           // LOCATE
           GestureDetector(
-            onTap: () {},
+            onTap: onLocate,
             child: SizedBox(
               width: locateW,
               height: locateH,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Image.asset(
-                    kImgLocate,
-                    width: locateW,
-                    height: locateH,
-                    fit: BoxFit.contain,
-                  ),
-                  const Text(
-                    'LOCATE',
-                    style: TextStyle(
-                      color: kWhite,
-                      fontFamily: 'Roboto',
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
+                  Image.asset(kImgLocate,
+                      width: locateW, height: locateH, fit: BoxFit.contain),
+                  const Text('LOCATE',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontFamily: 'Roboto',
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                      )),
                 ],
               ),
             ),
@@ -259,30 +223,23 @@ class QuickActionRow extends StatelessWidget {
           // SNAP TRIGGER
           Expanded(
             child: GestureDetector(
-              onTap: () {},
+              onTap: onSnapTrigger,
               child: SizedBox(
                 height: sideH,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                      child: Image.asset(
-                        kImgSnapTrigger,
-                        fit: BoxFit.fill,
-                      ),
-                    ),
-                    const Text(
-                      'SNAP\nTRIGGER',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Roboto',
-                        height: 1.35,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
+                        child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
+                    const Text('SNAP\nTRIGGER',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kBg,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'Roboto',
+                          height: 1.35,
+                        )),
                   ],
                 ),
               ),
@@ -297,34 +254,34 @@ class QuickActionRow extends StatelessWidget {
 
 // =============================================================================
 //  3. VITALS BANNER
-//  Full-width image, "VITALS" label left-aligned.
-//  Height ~80px matches the original.
 // =============================================================================
 class VitalsBanner extends StatelessWidget {
-  const VitalsBanner({super.key});
+  final VoidCallback onTap;
+  const VitalsBanner({super.key, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {},
-      child: Container(
-        height: 80,
+      onTap: onTap,
+      child: SizedBox(
         width: double.infinity,
-        decoration: BoxDecoration(
-          color: const Color(0xFF6B3FD4), // purple matching the original
-          borderRadius: BorderRadius.circular(18),
-        ),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 20),
-        child: const Text(
-          'VITALS',
-          style: TextStyle(
-            color: kWhite,
-            fontSize: 26,
-            fontFamily: 'Roboto',
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2.5,
-          ),
+        child: Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Image.asset(kImgVitals,
+                width: double.infinity, fit: BoxFit.fitWidth),
+            const Padding(
+              padding: EdgeInsets.only(left: 20),
+              child: Text('VITALS',
+                  style: TextStyle(
+                    color: kWhite,
+                    fontSize: 26,
+                    fontFamily: 'MicrosoftSansSerifBold',
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.5,
+                  )),
+            ),
+          ],
         ),
       ),
     );
@@ -333,20 +290,22 @@ class VitalsBanner extends StatelessWidget {
 
 // =============================================================================
 //  4. BOTTOM BLOB ROW
-//  Two blobs side by side, each ~140px, spaced evenly.
-//  REPORTS label is dark (blob is cream).
-//  ALL ABOUT DEMENTIA label is white (blob is purple).
 // =============================================================================
 class BottomBlobRow extends StatelessWidget {
-  const BottomBlobRow({super.key});
+  final VoidCallback onReports;
+  final VoidCallback onAllAbout;
+
+  const BottomBlobRow({
+    super.key,
+    required this.onReports,
+    required this.onAllAbout,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Each blob takes ~45% of available width so they sit naturally spaced
     return LayoutBuilder(
       builder: (context, constraints) {
         final double blobSize = constraints.maxWidth * 0.44;
-
         return SizedBox(
           height: blobSize,
           child: Row(
@@ -356,29 +315,25 @@ class BottomBlobRow extends StatelessWidget {
 
               // REPORTS
               GestureDetector(
-                onTap: () {},
+                onTap: onReports,
                 child: SizedBox(
                   width: blobSize,
                   height: blobSize,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(
-                        kImgReports,
-                        width: blobSize,
-                        height: blobSize,
-                        fit: BoxFit.contain,
-                      ),
-                      const Text(
-                        'REPORTS',
-                        style: TextStyle(
-                          color: kBg,
-                          fontSize: 26,
-                          fontFamily: 'Roboto',
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+                      Image.asset(kImgReports,
+                          width: blobSize,
+                          height: blobSize,
+                          fit: BoxFit.contain),
+                      const Text('REPORTS',
+                          style: TextStyle(
+                            color: kBg,
+                            fontSize: 26,
+                            fontFamily: 'MicrosoftSansSerifBold',
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          )),
                     ],
                   ),
                 ),
@@ -386,31 +341,27 @@ class BottomBlobRow extends StatelessWidget {
 
               // ALL ABOUT DEMENTIA
               GestureDetector(
-                onTap: () {},
+                onTap: onAllAbout,
                 child: SizedBox(
                   width: blobSize,
                   height: blobSize,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(
-                        kImgAllAbout,
-                        width: blobSize,
-                        height: blobSize,
-                        fit: BoxFit.contain,
-                      ),
-                      const Text(
-                        'ALL\nABOUT\nDEMENTIA',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: kWhite,
-                          fontSize: 26,
-                          fontFamily: 'Roboto',
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.4,
-                          height: 1.4,
-                        ),
-                      ),
+                      Image.asset(kImgAllAbout,
+                          width: blobSize,
+                          height: blobSize,
+                          fit: BoxFit.contain),
+                      const Text('ALL\nABOUT\nDEMENTIA',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: kWhite,
+                            fontSize: 26,
+                            fontFamily: 'MicrosoftSansSerifBold',
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.4,
+                            height: 1.4,
+                          )),
                     ],
                   ),
                 ),
@@ -425,8 +376,7 @@ class BottomBlobRow extends StatelessWidget {
 }
 
 // =============================================================================
-//  5. BOTTOM NAV BAR  (fixed via Scaffold.bottomNavigationBar)
-//  Home  = lime filled circle  |  Settings = lime outlined circle
+//  5. BOTTOM NAV BAR
 // =============================================================================
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key});
@@ -442,15 +392,9 @@ class BottomNavBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             NavImageButton(
-              imgPath: kImgNavHome,
-              isActive: true,
-              onTap: () {},
-            ),
+                imgPath: kImgNavHome, isActive: true, onTap: () {}),
             NavImageButton(
-              imgPath: kImgNavSettings,
-              isActive: false,
-              onTap: () {},
-            ),
+                imgPath: kImgNavSettings, isActive: false, onTap: () {}),
           ],
         ),
       ),
@@ -480,17 +424,13 @@ class NavImageButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isActive ? kLime : Colors.transparent,
           shape: BoxShape.circle,
-          border: isActive
-              ? null
-              : Border.all(color: kLime, width: 1.8),
+          border: isActive ? null : Border.all(color: kLime, width: 1.8),
         ),
         padding: const EdgeInsets.all(13),
-        child: Image.asset(
-          imgPath,
-          fit: BoxFit.contain,
-          color: isActive ? kBg : kLime,
-          colorBlendMode: BlendMode.srcIn,
-        ),
+        child: Image.asset(imgPath,
+            fit: BoxFit.contain,
+            color: isActive ? kBg : kLime,
+            colorBlendMode: BlendMode.srcIn),
       ),
     );
   }
