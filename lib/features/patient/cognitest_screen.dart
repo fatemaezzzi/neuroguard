@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:neuroguard/features/caregiver/cognitest_history_screen.dart';
 
 class CogniTestScreen extends StatelessWidget {
   const CogniTestScreen({super.key});
@@ -138,7 +139,12 @@ class CogniTestScreen extends StatelessWidget {
               // ── Test History pill asset ──────────────────────────────
               GestureDetector(
                 onTap: () {
-                  // TODO: Navigate to test history screen when ready
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CogniTestHistoryScreen(),
+                    ),
+                  );
                 },
                 child: Stack(
                   alignment: Alignment.center,
