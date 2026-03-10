@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:neuroguard/features/caregiver/cognitest_screen.dart';
 import 'core/services/permission_service.dart';
-import 'features/caregiver/cognitest_history_screen.dart';
 import 'features/patient/patient_home.dart';
 import 'features/caregiver/caregiver_home.dart';
 
@@ -26,7 +24,7 @@ class NeuroGuardApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
       ),
-      home: const PatientHome(),
+      home: const CaregiverHomePage(),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'cognitest_history_screen.dart';
 
 class ReportsPage extends StatelessWidget {
   const ReportsPage({super.key});
@@ -86,6 +87,8 @@ class ReportsPage extends StatelessWidget {
               _buildCognitiveReport(),
               const SizedBox(height: 20),
               _buildWeeklySummary(),
+              const SizedBox(height: 20),
+              _buildCognitiveHistory(),
               const SizedBox(height: 32),
             ],
           ),
@@ -437,6 +440,34 @@ class ReportsPage extends StatelessWidget {
                 child: Text('WEEKLY SUMMARY', style: _bigBlack),
               ),
             ),
+          ],
+        ),
+      );
+    });
+  }
+
+  // ── COGNITIVE HISTORY BUTTON ──────────────────────────────────────────
+  Widget _buildCognitiveHistory() {
+    return LayoutBuilder(builder: (context, constraints) {
+      final double w = constraints.maxWidth;
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CogniTestHistoryScreen(),
+            ),
+          );
+        },
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset(
+              'assets/cognitivehistorybutton.png',
+              width: w,
+              fit: BoxFit.fitWidth,
+            ),
+            const Text('COGNITIVE HISTORY', style: _bigBlack),
           ],
         ),
       );

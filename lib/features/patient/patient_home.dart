@@ -15,7 +15,6 @@ class NeuroGuardApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-        fontFamily: 'Roboto',
       ),
       home: const PatientHome(),
     );
@@ -137,7 +136,7 @@ class _PatientHomeState extends State<PatientHome> {
       onTap: () => _toast('Emergency alert sent to caregivers!'),
       child: Container(
         width: double.infinity,
-        height: 70,
+        height: 100,
         decoration: BoxDecoration(
           color: crimsonRed,
           borderRadius: BorderRadius.circular(14),
@@ -307,7 +306,7 @@ class _PatientHomeState extends State<PatientHome> {
       ),
       child: Container(
         width: double.infinity,
-        height: 95,
+        height: 105,
         decoration: BoxDecoration(
           color: limeGreen,
           borderRadius: BorderRadius.circular(16),
