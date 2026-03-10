@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:neuroguard/features/caregiver/cognitest_history_screen.dart';
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 
 class CogniTestScreen extends StatelessWidget {
   const CogniTestScreen({super.key});
@@ -185,18 +186,9 @@ class CogniTestScreen extends StatelessWidget {
               const SizedBox(height: 20),
 
               // ── Bottom Nav Bar ───────────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _NavButton(
-                    assetPath: 'assets/glassbubble.png',
-                    onTap: () => Navigator.pop(context),
-                  ),
-                  _NavButton(
-                    assetPath: 'assets/settingsblob.png',
-                    onTap: () {},
-                  ),
-                ],
+              // ── Bottom Nav Bar ───────────────────────────────────────
+              PatientBottomNav(
+                onSettingsTap: () {},
               ),
 
               const SizedBox(height: 8),
@@ -209,20 +201,3 @@ class CogniTestScreen extends StatelessWidget {
 }
 
 // ── Bottom Nav Circle Button ───────────────────────────────────────────────────
-class _NavButton extends StatelessWidget {
-  final String assetPath;
-  final VoidCallback onTap;
-  const _NavButton({required this.assetPath, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Image.asset(
-        assetPath,
-        width: 62,
-        height: 62,
-      ),
-    );
-  }
-}

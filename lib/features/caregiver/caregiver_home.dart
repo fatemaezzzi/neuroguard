@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'vitals_page.dart';
 import 'reports_page.dart';
 import 'all_about_dementia.dart'; // contains AllAboutDementiaPage1
-
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 // =============================================================================
 //  COLOUR TOKENS
 // =============================================================================
@@ -37,7 +37,9 @@ class CaregiverHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      bottomNavigationBar: const BottomNavBar(),
+      bottomNavigationBar: CaregiverBottomNav(
+        onSettingsTap: () {}, // TODO: wire settings page when ready
+      ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -378,60 +380,3 @@ class BottomBlobRow extends StatelessWidget {
 // =============================================================================
 //  5. BOTTOM NAV BAR
 // =============================================================================
-class BottomNavBar extends StatelessWidget {
-  const BottomNavBar({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        color: kBg,
-        padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            NavImageButton(
-                imgPath: kImgNavHome, isActive: true, onTap: () {}),
-            NavImageButton(
-                imgPath: kImgNavSettings, isActive: false, onTap: () {}),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class NavImageButton extends StatelessWidget {
-  final String imgPath;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const NavImageButton({
-    super.key,
-    required this.imgPath,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 62,
-        height: 62,
-        decoration: BoxDecoration(
-          color: isActive ? kLime : Colors.transparent,
-          shape: BoxShape.circle,
-          border: isActive ? null : Border.all(color: kLime, width: 1.8),
-        ),
-        padding: const EdgeInsets.all(13),
-        child: Image.asset(imgPath,
-            fit: BoxFit.contain,
-            color: isActive ? kBg : kLime,
-            colorBlendMode: BlendMode.srcIn),
-      ),
-    );
-  }
-}

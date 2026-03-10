@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 
 class ReportsPage extends StatelessWidget {
   const ReportsPage({super.key});
@@ -76,6 +77,9 @@ class ReportsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      bottomNavigationBar: CaregiverBottomNav(
+        onSettingsTap: () {}, // TODO: wire settings page when ready
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -91,7 +95,7 @@ class ReportsPage extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+
     );
   }
 
@@ -359,11 +363,12 @@ class ReportsPage extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               interval: 1,
-              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) =>
+                  Text(v.toInt().toString(),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                          fontFamily: 'Roboto')),
             ),
           ),
           leftTitles: AxisTitles(
@@ -371,11 +376,12 @@ class ReportsPage extends StatelessWidget {
               showTitles: true,
               interval: 0.5,
               reservedSize: 38,
-              getTitlesWidget: (v, _) => Text('${v.toStringAsFixed(1)}s',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.black54,
-                      fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) =>
+                  Text('${v.toStringAsFixed(1)}s',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.black54,
+                          fontFamily: 'Roboto')),
             ),
           ),
           topTitles:
@@ -397,12 +403,13 @@ class ReportsPage extends StatelessWidget {
             isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
-              getDotPainter: (spot, pct, bar, idx) => FlDotCirclePainter(
-                radius: 4,
-                color: Colors.black87,
-                strokeWidth: 0,
-                strokeColor: Colors.transparent,
-              ),
+              getDotPainter: (spot, pct, bar, idx) =>
+                  FlDotCirclePainter(
+                    radius: 4,
+                    color: Colors.black87,
+                    strokeWidth: 0,
+                    strokeColor: Colors.transparent,
+                  ),
             ),
             belowBarData: BarAreaData(
               show: true,
@@ -441,28 +448,6 @@ class ReportsPage extends StatelessWidget {
         ),
       );
     });
-  }
-
-  // ── BOTTOM NAV ────────────────────────────────────────────────────────
-  Widget _buildBottomNav() {
-    return Builder(
-      builder: (context) => Container(
-        color: Colors.black,
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _NavCircle(
-              iconAsset: 'assets/Vectorhome.png',
-              onTap: () => Navigator.pop(context),
-            ),
-            const _NavCircle(
-              iconAsset: 'assets/Vectorsettings.png',
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

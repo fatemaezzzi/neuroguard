@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 
 main() {
   runApp(const MaterialApp(

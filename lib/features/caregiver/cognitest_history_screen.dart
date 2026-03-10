@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 
 class CogniTestHistoryScreen extends StatefulWidget {
   const CogniTestHistoryScreen({super.key});
@@ -35,10 +36,11 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     {'date': 'MAR 8, 2026', 'time': '2.3s', 'value': 2.3},
   ];
 
-  List<FlSpot> get _weeklySpots => List.generate(
-    _sessions.length,
-        (i) => FlSpot(i.toDouble(), _sessions[i]['value'] as double),
-  );
+  List<FlSpot> get _weeklySpots =>
+      List.generate(
+        _sessions.length,
+            (i) => FlSpot(i.toDouble(), _sessions[i]['value'] as double),
+      );
 
   final List<FlSpot> _monthlySpots = const [
     FlSpot(0, 2.1), FlSpot(1, 2.4), FlSpot(2, 3.2), FlSpot(3, 2.7),
@@ -82,7 +84,9 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                 ),
               ),
             ),
-            _buildBottomNav(),
+            CaregiverBottomNav(
+              onSettingsTap: () {},
+            ),
           ],
         ),
       ),
@@ -112,10 +116,11 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
           child: Padding(
             padding: EdgeInsets.only(right: label == 'WEEKLY' ? 8 : 0),
             child: GestureDetector(
-              onTap: () => setState(() {
-                _selectedView = label;
-                _selectedIndex = null;
-              }),
+              onTap: () =>
+                  setState(() {
+                    _selectedView = label;
+                    _selectedIndex = null;
+                  }),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 25),
@@ -169,7 +174,8 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: 0.6,
-            getDrawingHorizontalLine: (_) => const FlLine(
+            getDrawingHorizontalLine: (_) =>
+            const FlLine(
               color: Color(0xFF1E1B4B),
               strokeWidth: 1,
             ),
@@ -239,12 +245,13 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
               barWidth: 2,
               dotData: FlDotData(
                 show: true,
-                getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
-                  radius: 3,
-                  color: _purple,
-                  strokeWidth: 1.5,
-                  strokeColor: _purpleLight,
-                ),
+                getDotPainter: (spot, _, __, ___) =>
+                    FlDotCirclePainter(
+                      radius: 3,
+                      color: _purple,
+                      strokeWidth: 1.5,
+                      strokeColor: _purpleLight,
+                    ),
               ),
               belowBarData: BarAreaData(
                 show: true,
@@ -265,16 +272,18 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
               tooltipBorder:
               const BorderSide(color: _purple, width: 1),
               tooltipBorderRadius: BorderRadius.circular(8),
-              getTooltipItems: (touchedSpots) => touchedSpots
-                  .map((s) => LineTooltipItem(
-                '${s.y.toStringAsFixed(1)}s',
-                const TextStyle(
-                  color: _purpleLight,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-              ))
-                  .toList(),
+              getTooltipItems: (touchedSpots) =>
+                  touchedSpots
+                      .map((s) =>
+                      LineTooltipItem(
+                        '${s.y.toStringAsFixed(1)}s',
+                        const TextStyle(
+                          color: _purpleLight,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ))
+                      .toList(),
             ),
           ),
         ),
@@ -394,29 +403,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     );
   }
 
-  // ── Bottom Nav ─────────────────────────────────────────────
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFF050508),
-        border: Border(top: BorderSide(color: Color(0xFF1A1A2E))),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _NavButton(
-            child: const Icon(Icons.home_rounded, color: _lime, size: 26),
-            onTap: () {},
-          ),
-          _NavButton(
-            child: const Icon(Icons.settings_rounded, color: _lime, size: 26),
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
-  }
+// ── Bottom Nav ─────────────────────────────────────────────
 }
 
 // ── Small Widgets ──────────────────────────────────────────────
@@ -434,29 +421,6 @@ class _PlayButton extends StatelessWidget {
         Icons.play_arrow_rounded,
         color: Color(0xFFA78BFA),
         size: 16,
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  final Widget child;
-  final VoidCallback onTap;
-
-  const _NavButton({required this.child, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A2A00),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(child: child),
       ),
     );
   }

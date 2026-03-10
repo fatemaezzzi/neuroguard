@@ -75,7 +75,7 @@ class CaregiverBottomNav extends StatelessWidget {
           GestureDetector(
             onTap: () => Navigator.pushAndRemoveUntil(
               context,
-              MaterialPageRoute(builder: (_) => const CaregiverHome()),
+              MaterialPageRoute(builder: (_) => const CaregiverHomePage()),
                   (route) => false,
             ),
             child: Image.asset(

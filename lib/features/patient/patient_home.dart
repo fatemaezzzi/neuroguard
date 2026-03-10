@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:neuroguard/features/caregiver/cognitest_screen.dart';
+import 'package:neuroguard/features/patient/cognitest_screen.dart';
+import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 
 void main() {
   runApp(const NeuroGuardApp());
@@ -23,7 +24,7 @@ class NeuroGuardApp extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PatientHome — renamed as requested
+// PatientHome
 // ─────────────────────────────────────────────────────────────────────────────
 class PatientHome extends StatefulWidget {
   const PatientHome({super.key});
@@ -33,8 +34,6 @@ class PatientHome extends StatefulWidget {
 }
 
 class _PatientHomeState extends State<PatientHome> {
-  int _selectedIndex = 0;
-
   static const Color limeGreen  = Color(0xFFB5E800);
   static const Color purple     = Color(0xFF7B52D9);
   static const Color crimsonRed = Color(0xFFBB0000);
@@ -68,7 +67,9 @@ class _PatientHomeState extends State<PatientHome> {
             ),
 
             // ── Bottom navigation ──
-            _buildBottomNav(),
+            PatientBottomNav(
+              onSettingsTap: () {},
+            ),
           ],
         ),
       ),
@@ -76,8 +77,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FLOWER HEADER — uses top-flower-blob.png asset
-  // with greeting text stacked on top
+  // FLOWER HEADER
   // ───────────────────────────────────────────────
   Widget _buildFlowerHeader() {
     return SizedBox(
@@ -86,15 +86,12 @@ class _PatientHomeState extends State<PatientHome> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // The PNG asset fills the full width
           Positioned.fill(
             child: Image.asset(
               'assets/top-flower-blob.png',
               fit: BoxFit.fill,
             ),
           ),
-
-          // Greeting text centred over the blob
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Column(
@@ -116,7 +113,7 @@ class _PatientHomeState extends State<PatientHome> {
                   style: TextStyle(
                     color: Colors.black.withOpacity(0.65),
                     fontSize: 20,
-                    fontFamily: 'MicrosoftSanSerifBold',
+                    fontFamily: 'MicrosoftSansSerifBold',
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.4,
                   ),
@@ -130,7 +127,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // HELP ME — full-width red button
+  // HELP ME
   // ───────────────────────────────────────────────
   Widget _buildHelpMeButton() {
     return GestureDetector(
@@ -167,18 +164,6 @@ class _PatientHomeState extends State<PatientHome> {
 
   // ───────────────────────────────────────────────
   // UNEVEN 2 × 2 GRID
-  //
-  // Left column :  LOCATION (tall)  /  TAKE ME HOME (shorter)
-  // Right column:  CALL FAMILY (shorter)  /  MEDICINE (tall)
-  //
-  // Achieved with IntrinsicHeight + flex heights via
-  // explicit SizedBox heights on each cell.
-  //
-  // Heights (matching prototype):
-  //   LOCATION      = 140
-  //   TAKE ME HOME  = 105
-  //   CALL FAMILY   = 105
-  //   MEDICINE      = 140
   // ───────────────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
@@ -190,7 +175,6 @@ class _PatientHomeState extends State<PatientHome> {
         Expanded(
           child: Column(
             children: [
-              // LOCATION — taller
               _gridCell(
                 height: 140,
                 color: limeGreen,
@@ -201,7 +185,6 @@ class _PatientHomeState extends State<PatientHome> {
                 onTap: () => _toast('Sharing your location…'),
               ),
               const SizedBox(height: gap),
-              // TAKE ME HOME — shorter
               _gridCell(
                 height: 105,
                 color: purple,
@@ -221,7 +204,6 @@ class _PatientHomeState extends State<PatientHome> {
         Expanded(
           child: Column(
             children: [
-              // CALL FAMILY — shorter
               _gridCell(
                 height: 105,
                 color: purple,
@@ -232,7 +214,6 @@ class _PatientHomeState extends State<PatientHome> {
                 onTap: () => _toast('Calling your family…'),
               ),
               const SizedBox(height: gap),
-              // MEDICINE — taller
               _gridCell(
                 height: 140,
                 color: purple,
@@ -297,7 +278,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FIX THE CLOCK — lime wide button with play icon
+  // FIX THE CLOCK
   // ───────────────────────────────────────────────
   Widget _buildFixTheClockButton() {
     return GestureDetector(
@@ -354,59 +335,6 @@ class _PatientHomeState extends State<PatientHome> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────
-  // BOTTOM NAV — large dark pill, huge icons
-  // ───────────────────────────────────────────────
-  Widget _buildBottomNav() {
-    return Container(
-      height: 88,
-      margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2B2B2B),
-        borderRadius: BorderRadius.circular(44),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _navButton(Icons.home_rounded, 0),
-          _navButton(Icons.settings_rounded, 1),
-        ],
-      ),
-    );
-  }
-
-  Widget _navButton(IconData icon, int index) {
-    final bool active = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          // Subtle lime highlight on the active item
-          color: active
-              ? limeGreen.withOpacity(0.18)
-              : Colors.transparent,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          icon,
-          // Active icon is lime-green; inactive is white
-          color: active ? limeGreen : Colors.white,
-          size: 46, // ← big icons as shown in the design
         ),
       ),
     );
