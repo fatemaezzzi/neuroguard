@@ -91,6 +91,8 @@ class ReportsPage extends StatelessWidget {
               _buildCognitiveReport(),
               const SizedBox(height: 20),
               _buildWeeklySummary(),
+              const SizedBox(height: 20),
+              _buildCognitiveHistory(),
               const SizedBox(height: 32),
             ],
           ),
@@ -367,6 +369,34 @@ class ReportsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  // ── COGNITIVE HISTORY BUTTON ──────────────────────────────────────────
+  Widget _buildCognitiveHistory() {
+    return LayoutBuilder(builder: (context, constraints) {
+      final double w = constraints.maxWidth;
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CogniTestHistoryScreen(),
+            ),
+          );
+        },
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset(
+              'assets/cognitivehistorybutton.png',
+              width: w,
+              fit: BoxFit.fitWidth,
+            ),
+            const Text('COGNITIVE HISTORY', style: _bigBlack),
+          ],
+        ),
+      );
+    });
   }
 
   // ── WEEKLY SUMMARY ────────────────────────────────────────────────────

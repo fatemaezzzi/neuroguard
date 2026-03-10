@@ -35,9 +35,9 @@ class VitalsPage extends StatelessWidget {
     color: Colors.black,
   );
 
-  static const double _overlapVeloStatus   = 28.0;
+  static const double _overlapVeloStatus   = 20.0;
   static const double _overlapStatusPocket = -23.0;
-  static const double _overlapPocketVibra  = 23.0;
+  static const double _overlapPocketVibra  = 10.0;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +66,7 @@ class VitalsPage extends StatelessWidget {
         final double w = constraints.maxWidth;
 
         final double h1 = w * (190 / 364);
-        final double h2 = w * (159 / 364);
+        final double h2 = w * (145 / 364);
         final double h3 = w * (81  / 364);
         final double h4 = w * (151 / 350);
 
