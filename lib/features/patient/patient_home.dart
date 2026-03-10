@@ -139,7 +139,7 @@ class _PatientHomeState extends State<PatientHome> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: crimsonRed.withOpacity(0.55),
+              color: crimsonRed.withValues(alpha: 0.55),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
@@ -323,7 +323,7 @@ class _PatientHomeState extends State<PatientHome> {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

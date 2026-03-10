@@ -1,15 +1,31 @@
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'core/services/permission_service.dart';
 import 'features/patient/patient_home.dart';
 import 'features/caregiver/caregiver_home.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase — must happen before runApp
-  await Firebase.initializeApp();
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  try {
+    final result = await FirebaseFirestore.instance
+        .collection('users')
+        .limit(1)
+        .get(const GetOptions(source: Source.server));
+    print('✅ FIRESTORE WORKS: ${result.docs.length} docs found');
+  } catch (e) {
+    print('❌ FIRESTORE FAILED: $e');
+  }
 
   await PermissionService.requestAllPermissions();
   runApp(const NeuroGuardApp());
@@ -29,7 +45,7 @@ class NeuroGuardApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
       ),
-      home: const PatientHome(), // replace with AuthGate when auth is ready
+      home: const PatientHome(),
     );
   }
 }

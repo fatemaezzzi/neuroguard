@@ -52,7 +52,7 @@ class _ReplayScrubberState extends State<ReplayScrubber> {
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: const Color(0xFF7B4FD4),
             thumbColor: const Color(0xFF7B4FD4),
-            inactiveTrackColor: const Color(0xFF7B4FD4).withOpacity(0.2),
+            inactiveTrackColor: const Color(0xFF7B4FD4).withValues(alpha: 0.2),
             overlayColor: const Color(0xFF7B4FD4).withOpacity(0.1),
           ),
           child: Slider(

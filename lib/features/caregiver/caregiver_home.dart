@@ -3,6 +3,7 @@ import 'vitals_page.dart';
 import 'reports_page.dart';
 import 'all_about_dementia.dart'; // contains AllAboutDementiaPage1
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 // =============================================================================
 //  COLOUR TOKENS
 // =============================================================================
@@ -57,7 +58,13 @@ class CaregiverHomePage extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: QuickActionRow(
                   onSpyCall:     () {},  // TODO: wire when SpyCall page is ready
-                  onLocate:      () {},  // TODO: wire when Locate page is ready
+                  onLocate:      () => _go(
+                    context,
+                    const TrackerPage(
+                      patientId:   'patient_01',   // replace with real patient ID from auth
+                      patientName: 'Raj',          // replace with real patient name
+                    ),
+                  ),
                   onSnapTrigger: () {},  // TODO: wire when SnapTrigger page is ready
                 ),
               ),
