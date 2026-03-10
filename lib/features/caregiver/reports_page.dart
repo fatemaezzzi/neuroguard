@@ -79,7 +79,7 @@ class ReportsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       bottomNavigationBar: CaregiverBottomNav(
-        onSettingsTap: () {}, // TODO: wire settings page when ready
+        onSettingsTap: () {},
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -91,13 +91,11 @@ class ReportsPage extends StatelessWidget {
               _buildCognitiveReport(),
               const SizedBox(height: 20),
               _buildWeeklySummary(),
-              const SizedBox(height: 20),
               const SizedBox(height: 32),
             ],
           ),
         ),
       ),
-
     );
   }
 
@@ -105,9 +103,7 @@ class ReportsPage extends StatelessWidget {
   Widget _buildSleepReport() {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
-      // sleepreport.png is 364x307
       final double h = w * (307 / 364);
-      // statusbed.png is 342x61
       final double sh = w * (61 / 342);
 
       return SizedBox(
@@ -115,10 +111,8 @@ class ReportsPage extends StatelessWidget {
         height: h,
         child: Stack(
           children: [
-            // Background blob
             Image.asset('assets/sleepreport.png',
                 width: w, height: h, fit: BoxFit.fill),
-
             Positioned(
               top: 20,
               left: 20,
@@ -127,7 +121,6 @@ class ReportsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title
                   Row(
                     children: const [
                       Text('SLEEP REPORT', style: _bigBlack),
@@ -136,8 +129,6 @@ class ReportsPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // STATUS pill — statusbed.png behind, text on top
                   SizedBox(
                     width: w - 40,
                     height: sh,
@@ -147,11 +138,9 @@ class ReportsPage extends StatelessWidget {
                             width: w - 40, height: sh, fit: BoxFit.fill),
                         Positioned.fill(
                           child: Padding(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: const [
                                 Text('STATUS', style: _bigBlack),
@@ -166,23 +155,15 @@ class ReportsPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 14),
-
-                  // Alert logs
                   const Text('ALERT LOGS', style: _bigGreen),
                   const SizedBox(height: 8),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      SizedBox(
-                        width: 150,
-                        child: Text('02:30', style: _timeGreen),
-                      ),
+                      SizedBox(width: 150, child: Text('02:30', style: _timeGreen)),
                       SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          'Emergency Alert\n(Unresponsive)',
-                          style: _alertText,
-                        ),
+                        child: Text('Emergency Alert\n(Unresponsive)', style: _alertText),
                       ),
                     ],
                   ),
@@ -190,14 +171,9 @@ class ReportsPage extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: const [
-                      SizedBox(
-                        width: 150,
-                        child: Text('02:55', style: _timeGreen),
-                      ),
+                      SizedBox(width: 150, child: Text('02:55', style: _timeGreen)),
                       SizedBox(width: 10),
-                      Expanded(
-                        child: Text('Bed Exit Alert', style: _alertText),
-                      ),
+                      Expanded(child: Text('Bed Exit Alert', style: _alertText)),
                     ],
                   ),
                 ],
@@ -213,18 +189,9 @@ class ReportsPage extends StatelessWidget {
   Widget _buildCognitiveReport() {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
-      // cognitivetestreport.png is 364x307
-      final double cardH = w * (307 / 364);
-      // lasttest.png is 364x349 — very tall purple square
-      // previoustest.png is 342x94 — neon green wide rect
-      // We render them overlapping: previoustest behind, lasttest on top left
-      final double ltW = w * 0.48;
-      final double ltH = ltW * (349 / 364);
-      final double ptH = ltW * (94 / 342);
 
       return SizedBox(
         width: w,
-        // cognitive card must be tall enough to hold everything
         child: Stack(
           children: [
             Image.asset('assets/cognitivetestreport.png',
@@ -239,16 +206,10 @@ class ReportsPage extends StatelessWidget {
                 children: [
                   const Text('COGNITIVE TEST REPORT', style: _bigBlack),
                   const SizedBox(height: 14),
-
-                  // Last test + Previous test overlapping layout
                   _buildTestBoxes(w - 40),
-
                   const SizedBox(height: 16),
-
-                  const Text('HOVER TIME OVER LAST 5\nSESSIONS',
-                      style: _bigBlack),
+                  const Text('HOVER TIME OVER LAST 5\nSESSIONS', style: _bigBlack),
                   const SizedBox(height: 10),
-
                   Container(
                     height: 180,
                     decoration: BoxDecoration(
@@ -267,13 +228,10 @@ class ReportsPage extends StatelessWidget {
     });
   }
 
-  // LAST TEST purple rect (no image) overlaps ON TOP of previoustest.png
   Widget _buildTestBoxes(double w) {
-    // previoustest.png: 342x94
     final double ptH = w * (94 / 342);
-    // last test box: ~46% width, roughly square
     final double ltW = w * 0.30;
-    final double ltH = ltW; // square-ish purple box
+    final double ltH = ltW;
 
     return SizedBox(
       width: w,
@@ -281,7 +239,6 @@ class ReportsPage extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // PREVIOUS TEST — full width, vertically centered in the stack
           Positioned(
             top: ltH / 2 - ptH / 2,
             left: 0,
@@ -314,8 +271,6 @@ class ReportsPage extends StatelessWidget {
               ],
             ),
           ),
-
-          // LAST TEST — purple rounded rect, left half, ON TOP of previous test
           Positioned(
             top: 0,
             left: 0,
@@ -365,12 +320,9 @@ class ReportsPage extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               interval: 1,
-              getTitlesWidget: (v, _) =>
-                  Text(v.toInt().toString(),
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                          fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.black54, fontFamily: 'Roboto')),
             ),
           ),
           leftTitles: AxisTitles(
@@ -378,18 +330,13 @@ class ReportsPage extends StatelessWidget {
               showTitles: true,
               interval: 0.5,
               reservedSize: 38,
-              getTitlesWidget: (v, _) =>
-                  Text('${v.toStringAsFixed(1)}s',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.black54,
-                          fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) => Text('${v.toStringAsFixed(1)}s',
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.black54, fontFamily: 'Roboto')),
             ),
           ),
-          topTitles:
-          const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-          const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: false),
         minX: 1,
@@ -405,13 +352,12 @@ class ReportsPage extends StatelessWidget {
             isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
-              getDotPainter: (spot, pct, bar, idx) =>
-                  FlDotCirclePainter(
-                    radius: 4,
-                    color: Colors.black87,
-                    strokeWidth: 0,
-                    strokeColor: Colors.transparent,
-                  ),
+              getDotPainter: (spot, pct, bar, idx) => FlDotCirclePainter(
+                radius: 4,
+                color: Colors.black87,
+                strokeWidth: 0,
+                strokeColor: Colors.transparent,
+              ),
             ),
             belowBarData: BarAreaData(
               show: true,
@@ -424,7 +370,6 @@ class ReportsPage extends StatelessWidget {
   }
 
   // ── WEEKLY SUMMARY ────────────────────────────────────────────────────
-  // weeklysummary.png is 364x349 — hourglass (top pill + bottom square)
   Widget _buildWeeklySummary() {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
@@ -436,7 +381,6 @@ class ReportsPage extends StatelessWidget {
           children: [
             Image.asset('assets/weeklysummary.png',
                 width: w, height: h, fit: BoxFit.fill),
-            // "WEEKLY SUMMARY" sits in the top pill portion (~top 27% of image)
             Positioned(
               top: 0,
               left: 0,
@@ -450,80 +394,5 @@ class ReportsPage extends StatelessWidget {
         ),
       );
     });
-  }
-
-  // ── COGNITIVE HISTORY BUTTON ──────────────────────────────────────────
-  Widget _buildCognitiveHistory() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final double w = constraints.maxWidth;
-      return GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const CogniTestHistoryScreen(),
-            ),
-          );
-        },
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Image.asset(
-              'assets/cognitivehistorybutton.png',
-              width: w,
-              fit: BoxFit.fitWidth,
-            ),
-            const Text('COGNITIVE HISTORY', style: _bigBlack),
-          ],
-        ),
-      );
-    });
-  }
-
-  // ── BOTTOM NAV ────────────────────────────────────────────────────────
-  Widget _buildBottomNav() {
-    return Builder(
-      builder: (context) => Container(
-        color: Colors.black,
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _NavCircle(
-              iconAsset: 'assets/Vectorhome.png',
-              onTap: () => Navigator.pop(context),
-            ),
-            const _NavCircle(
-              iconAsset: 'assets/Vectorsettings.png',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavCircle extends StatelessWidget {
-  final String iconAsset;
-  final VoidCallback? onTap;
-  const _NavCircle({required this.iconAsset, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 62,
-        height: 62,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Image.asset('assets/glassbubble.png',
-                width: 62, height: 62, fit: BoxFit.cover),
-            Image.asset(iconAsset, width: 28, height: 28),
-          ],
-        ),
-      ),
-    );
   }
 }

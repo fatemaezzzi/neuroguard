@@ -43,6 +43,9 @@ class VitalsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      bottomNavigationBar: CaregiverBottomNav(
+        onSettingsTap: () {},
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -54,7 +57,6 @@ class VitalsPage extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -242,52 +244,6 @@ class VitalsPage extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    return Builder(
-      builder: (context) => Container(
-        color: Colors.black,
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _NavCircle(
-              iconAsset: 'assets/Vectorhome.png',
-              onTap: () => Navigator.pop(context),
-            ),
-            const _NavCircle(
-              iconAsset: 'assets/Vectorsettings.png',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavCircle extends StatelessWidget {
-  final String iconAsset;
-  final VoidCallback? onTap;
-  const _NavCircle({required this.iconAsset, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 62,
-        height: 62,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Image.asset('assets/glassbubble.png',
-                width: 62, height: 62, fit: BoxFit.cover),
-            Image.asset(iconAsset, width: 28, height: 28),
-          ],
-        ),
       ),
     );
   }
