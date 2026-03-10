@@ -445,15 +445,22 @@ class ReportsPage extends StatelessWidget {
 
   // ── BOTTOM NAV ────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: const [
-          _NavCircle(iconAsset: 'assets/Vectorhome.png'),
-          _NavCircle(iconAsset: 'assets/Vectorsettings.png'),
-        ],
+    return Builder(
+      builder: (context) => Container(
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _NavCircle(
+              iconAsset: 'assets/Vectorhome.png',
+              onTap: () => Navigator.pop(context),
+            ),
+            const _NavCircle(
+              iconAsset: 'assets/Vectorsettings.png',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -461,20 +468,24 @@ class ReportsPage extends StatelessWidget {
 
 class _NavCircle extends StatelessWidget {
   final String iconAsset;
-  const _NavCircle({required this.iconAsset});
+  final VoidCallback? onTap;
+  const _NavCircle({required this.iconAsset, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 62,
-      height: 62,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Image.asset('assets/glassbubble.png',
-              width: 62, height: 62, fit: BoxFit.cover),
-          Image.asset(iconAsset, width: 28, height: 28),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        height: 62,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset('assets/glassbubble.png',
+                width: 62, height: 62, fit: BoxFit.cover),
+            Image.asset(iconAsset, width: 28, height: 28),
+          ],
+        ),
       ),
     );
   }
