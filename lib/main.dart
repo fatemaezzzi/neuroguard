@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:neuroguard/features/caregiver/cognitest_screen.dart';
 import 'core/services/permission_service.dart';
 import 'features/caregiver/cognitest_history_screen.dart';
 import 'features/caregiver/all_about_dementia.dart';
@@ -7,6 +8,7 @@ import 'features/caregiver/caregiver_home.dart';
 import 'core/services/permission_service.dart';
 import 'features/caregiver/vitals_page.dart';
 import 'features/caregiver/reports_page.dart';
+import 'features/caregiver/cognitest_history_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +30,7 @@ class NeuroGuardApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
       ),
-      home: const CaregiverHomePage(),
+      home: const CogniTestScreen(),
     );
   }
 }
