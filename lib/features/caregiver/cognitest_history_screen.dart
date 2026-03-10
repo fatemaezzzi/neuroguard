@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:neuroguard/features/caregiver/caregiver_home.dart';
+import 'package:neuroguard/features/patient/patient_home.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'package:neuroguard/core/services/cognitest_service.dart';
+import 'package:neuroguard/core/models/stroke_point.dart';
+import 'package:neuroguard/features/patient/replay_scrubber.dart';
 
 class CogniTestHistoryScreen extends StatefulWidget {
-  const CogniTestHistoryScreen({super.key});
+  // BUG FIX 1: caller passes their role so the bottom nav home button
+  // routes to the correct screen (patient → PatientHome, caregiver → CaregiverHome)
+  final String callerRole; // 'patient' or 'caregiver'
+
+  const CogniTestHistoryScreen({
+    super.key,
+    this.callerRole = 'caregiver',
+  });
 
   @override
   State<CogniTestHistoryScreen> createState() =>
@@ -11,416 +24,618 @@ class CogniTestHistoryScreen extends StatefulWidget {
 }
 
 class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
-  String _selectedView = 'WEEKLY';
-  int? _selectedIndex;
+  static const String _patientId = 'patient_01';
 
-  // ── Palette ────────────────────────────────────────────────
-  static const Color _bg = Color(0xFF000000);
-  static const Color _cardBg = Color(0xFF0D0D1A);
-  static const Color _purple = Color(0xFF7C3AED);
-  static const Color _purpleLight = Color(0xFFA78BFA);
-  static const Color _purpleDim = Color(0xFF2A1A5E);
-  static const Color _lime = Color(0xFFB5F20E);
-  static const Color _textPrimary = Color(0xFFE2E8F0);
-  static const Color _textMuted = Color(0xFF94A3B8);
-  static const Color _divider = Color(0xFF111827);
-  static const Color _cyan = Color(0xFF00BFFF);
+  final _service = CogniTestService();
+  bool _showMonthly = false;
+  List<Map<String, dynamic>> _sessions = [];
+  bool _loading = true;
+  String? _expandedSessionId;
+  List<StrokePoint> _replayPoints = [];
+  bool _loadingReplay = false;
 
-  // ── Data ───────────────────────────────────────────────────
-  final List<Map<String, dynamic>> _sessions = [
-    {'date': 'MAR 3, 2026', 'time': '2.3s', 'value': 2.3},
-    {'date': 'MAR 4, 2026', 'time': '2.3s', 'value': 2.3},
-    {'date': 'MAR 5, 2026', 'time': '2.6s', 'value': 2.6},
-    {'date': 'MAR 6, 2026', 'time': '3.1s', 'value': 3.1},
-    {'date': 'MAR 7, 2026', 'time': '2.8s', 'value': 2.8},
-    {'date': 'MAR 8, 2026', 'time': '2.3s', 'value': 2.3},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadSessions();
+  }
 
-  List<FlSpot> get _weeklySpots =>
-      List.generate(
-        _sessions.length,
-            (i) => FlSpot(i.toDouble(), _sessions[i]['value'] as double),
+  Future<void> _loadSessions() async {
+    setState(() => _loading = true);
+    final sessions = await _service.getPastSessions(_patientId);
+    setState(() {
+      _sessions = sessions;
+      _loading = false;
+    });
+  }
+
+  Future<void> _toggleSession(String sessionId) async {
+    if (_expandedSessionId == sessionId) {
+      setState(() {
+        _expandedSessionId = null;
+        _replayPoints = [];
+      });
+      return;
+    }
+    setState(() {
+      _expandedSessionId = sessionId;
+      _replayPoints = [];
+      _loadingReplay = true;
+    });
+    final points = await _service.getSessionPoints(_patientId, sessionId);
+    setState(() {
+      _replayPoints = points;
+      _loadingReplay = false;
+    });
+  }
+
+  // BUG FIX 1: navigate to the correct home based on who opened this screen
+  void _goHome() {
+    if (widget.callerRole == 'patient') {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const PatientHome()),
+            (route) => false,
       );
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const CaregiverHomePage()),
+            (route) => false,
+      );
+    }
+  }
 
-  final List<FlSpot> _monthlySpots = const [
-    FlSpot(0, 2.1), FlSpot(1, 2.4), FlSpot(2, 3.2), FlSpot(3, 2.7),
-    FlSpot(4, 3.5), FlSpot(5, 2.3), FlSpot(6, 2.8), FlSpot(7, 3.1),
-    FlSpot(8, 2.6), FlSpot(9, 2.9), FlSpot(10, 3.3), FlSpot(11, 2.4),
-  ];
+  List<FlSpot> _buildSpots() {
+    final chronological = _sessions.reversed.toList();
+    return List.generate(chronological.length, (i) {
+      final tia =
+          (chronological[i]['avg_time_in_air'] as num?)?.toDouble() ?? 0.0;
+      return FlSpot(i.toDouble() + 1, tia);
+    });
+  }
 
-  List<FlSpot> get _activeSpots =>
-      _selectedView == 'WEEKLY' ? _weeklySpots : _monthlySpots;
+  double get _chartMinY {
+    if (_sessions.isEmpty) return 0;
+    final vals = _sessions
+        .map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
+    return (vals.reduce((a, b) => a < b ? a : b) - 0.5).clamp(0.0, 99.0);
+  }
 
-  // ── Helpers ────────────────────────────────────────────────
-  Color _timeColor(double v) {
-    if (v > 3.0) return const Color(0xFFF87171);
-    if (v > 2.5) return const Color(0xFFFBBF24);
-    return _purpleLight;
+  double get _chartMaxY {
+    if (_sessions.isEmpty) return 5;
+    final vals = _sessions
+        .map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
+    return vals.reduce((a, b) => a > b ? a : b) + 0.5;
+  }
+
+  Color _scoreColor(int score) {
+    if (score >= 80) return Colors.green;
+    if (score >= 55) return Colors.orange;
+    return Colors.red;
+  }
+
+  String _formatDate(dynamic ts) {
+    if (ts == null) return '—';
+    if (ts is Timestamp) {
+      final dt = ts.toDate();
+      return '${dt.day}/${dt.month}  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return '—';
   }
 
   @override
   Widget build(BuildContext context) {
+    final isPatient = widget.callerRole == 'patient';
+
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: Column(
           children: [
+            // ── Header ─────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(Icons.arrow_back,
+                        color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'TEST HISTORY',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _loadSessions,
+                    child: const Icon(Icons.refresh,
+                        color: Color(0xFFCCFF00), size: 24),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _loading
+                  ? const Center(
+                  child: CircularProgressIndicator(
+                      color: Color(0xFF7B4FD4)))
+                  : _sessions.isEmpty
+                  ? _buildEmptyState()
+                  : SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 8),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 16),
-                    _buildTitle(),
+                    _buildSummaryPills(),
                     const SizedBox(height: 20),
-                    _buildToggleButtons(),
-                    const SizedBox(height: 20),
-                    _buildChart(),
+                    _buildToggle(),
+                    const SizedBox(height: 12),
+                    _buildTrendGraph(),
                     const SizedBox(height: 24),
-                    _buildSessionList(),
-                    const SizedBox(height: 20),
-                  ],
-                ),
-              ),
-            ),
-            CaregiverBottomNav(
-              onSettingsTap: () {},
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Title ──────────────────────────────────────────────────
-  Widget _buildTitle() {
-    return const Text(
-      'COGNITEST - HISTORY',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 28,
-        fontFamily: 'MicrosoftSanSerifBold',
-        fontWeight: FontWeight.w900,
-        letterSpacing: 2,
-      ),
-    );
-  }
-
-  // ── Toggle ─────────────────────────────────────────────────
-  Widget _buildToggleButtons() {
-    return Row(
-      children: ['WEEKLY', 'MONTHLY'].map((label) {
-        final isActive = _selectedView == label;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: label == 'WEEKLY' ? 8 : 0),
-            child: GestureDetector(
-              onTap: () =>
-                  setState(() {
-                    _selectedView = label;
-                    _selectedIndex = null;
-                  }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 25),
-                decoration: BoxDecoration(
-                  color: isActive ? _purple : _purpleDim,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: isActive
-                      ? [
-                    BoxShadow(
-                      color: _purple.withOpacity(0.45),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
-                    )
-                  ]
-                      : null,
-                ),
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Roboto',
-                    fontSize: 20,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // ── Chart ──────────────────────────────────────────────────
-  Widget _buildChart() {
-    return Container(
-      height: 140,
-      padding: const EdgeInsets.fromLTRB(8, 16, 12, 10),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E1B4B)),
-      ),
-      child: LineChart(
-        LineChartData(
-          minY: 1.2,
-          maxY: 4.8,
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: 0.6,
-            getDrawingHorizontalLine: (_) =>
-            const FlLine(
-              color: Color(0xFF1E1B4B),
-              strokeWidth: 1,
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 36,
-                interval: 0.5,
-                getTitlesWidget: (value, _) {
-                  if (value % 0.5 != 0) return const SizedBox.shrink();
-                  return Text(
-                    '${value.toStringAsFixed(1)}s',
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 9,
-                    ),
-                  );
-                },
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, _) {
-                  final spots = _activeSpots;
-                  if (value.toInt() >= spots.length) {
-                    return const SizedBox.shrink();
-                  }
-                  final label = _selectedView == 'WEEKLY'
-                      ? 'D${value.toInt() + 1}'
-                      : 'W${value.toInt() + 1}';
-                  return Text(
-                    label,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 9,
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          extraLinesData: ExtraLinesData(
-            horizontalLines: [
-              HorizontalLine(
-                y: 3.0,
-                color: const Color(0xFFEF4444).withOpacity(0.25),
-                strokeWidth: 1,
-                dashArray: [4, 4],
-              ),
-            ],
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: _activeSpots,
-              isCurved: true,
-              curveSmoothness: 0.3,
-              color: _purpleLight,
-              barWidth: 2,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (spot, _, __, ___) =>
-                    FlDotCirclePainter(
-                      radius: 3,
-                      color: _purple,
-                      strokeWidth: 1.5,
-                      strokeColor: _purpleLight,
-                    ),
-              ),
-              belowBarData: BarAreaData(
-                show: true,
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _purple.withOpacity(0.18),
-                    _purple.withOpacity(0.0),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (_) => const Color(0xFF1A1A2E),
-              tooltipBorder:
-              const BorderSide(color: _purple, width: 1),
-              tooltipBorderRadius: BorderRadius.circular(8),
-              getTooltipItems: (touchedSpots) =>
-                  touchedSpots
-                      .map((s) =>
-                      LineTooltipItem(
-                        '${s.y.toStringAsFixed(1)}s',
-                        const TextStyle(
-                          color: _purpleLight,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ))
-                      .toList(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Session List ───────────────────────────────────────────
-  Widget _buildSessionList() {
-    return Column(
-      children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: [
-              const Text(
-                'DATE',
-                style: TextStyle(
-                  color: _textMuted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  letterSpacing: 1,
-                ),
-              ),
-              const Spacer(),
-              const Padding(
-                padding: EdgeInsets.only(right: 32),
-                child: Text(
-                  'TIME',
-                  style: TextStyle(
-                    color: _textMuted,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(color: Color(0xFF1E1B4B), height: 1),
-
-        // Rows
-        ...List.generate(_sessions.length, (i) {
-          final session = _sessions[i];
-          final isSelected = _selectedIndex == i;
-          final value = session['value'] as double;
-
-          return Column(
-            children: [
-              InkWell(
-                onTap: () =>
-                    setState(() => _selectedIndex = isSelected ? null : i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: EdgeInsets.fromLTRB(
-                    isSelected ? 8 : 0,
-                    14,
-                    0,
-                    isSelected ? 10 : 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? _purple.withOpacity(0.06)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(isSelected ? 8 : 0),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              session['date'] as String,
-                              style: const TextStyle(
-                                color: _textPrimary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 18,
-                              ),
-                            ),
-                            if (isSelected) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                'Avg hover time: ${value.toStringAsFixed(1)}s',
-                                style: const TextStyle(
-                                  color: _purple,
-                                  fontSize: 18,
-                                  letterSpacing: 0.4,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Text(
-                        session['time'] as String,
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'PAST SESSIONS',
                         style: TextStyle(
-                          color: _timeColor(value),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 18,
+                          color: Color(0xFFCCFF00),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          letterSpacing: 1.5,
                         ),
                       ),
-                      const SizedBox(width: 14),
-                      _PlayButton(),
+                    ),
+                    const SizedBox(height: 10),
+                    ..._sessions.map(_buildSessionRow),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ),
+
+            // BUG FIX 1: bottom nav home button routes based on callerRole
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: isPatient
+                  ? PatientBottomNav(
+                onHomeTap: _goHome,
+                onSettingsTap: () {},
+              )
+                  : CaregiverBottomNav(
+                onHomeTap: _goHome,
+                onSettingsTap: () {},
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() => const Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.history_toggle_off, color: Colors.grey, size: 64),
+        SizedBox(height: 16),
+        Text('No tests yet',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold)),
+        SizedBox(height: 8),
+        Text(
+          'Complete a clock drawing test\nto see results here.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey, fontSize: 14),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildSummaryPills() {
+    final latest = _sessions.isNotEmpty ? _sessions[0] : null;
+    final prev = _sessions.length > 1 ? _sessions[1] : null;
+    final latestTia =
+        (latest?['avg_time_in_air'] as num?)?.toStringAsFixed(2) ?? '—';
+    final prevTia =
+        (prev?['avg_time_in_air'] as num?)?.toStringAsFixed(2) ?? '—';
+    final latestScore = (latest?['score'] as num?)?.toInt() ?? 0;
+    final prevScore = (prev?['score'] as num?)?.toInt();
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C3AED),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('LAST TEST',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        letterSpacing: 1)),
+                const SizedBox(height: 6),
+                Text('${latestTia}s',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 32)),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _scoreColor(latestScore),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('Score: $latestScore',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('PREVIOUS TEST',
+                    style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        letterSpacing: 1)),
+                const SizedBox(height: 6),
+                Text(
+                  prevScore != null ? '$prevScore' : '—',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    color: prevScore != null
+                        ? _scoreColor(prevScore)
+                        : Colors.grey,
+                  ),
+                ),
+                Text(
+                  prevScore != null
+                      ? '${prevTia}s hover'
+                      : 'No previous test',
+                  style:
+                  const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                if (prevScore != null)
+                  Row(
+                    children: [
+                      Icon(
+                        latestScore >= prevScore
+                            ? Icons.trending_up
+                            : Icons.trending_down,
+                        color: latestScore >= prevScore
+                            ? Colors.green
+                            : Colors.red,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        latestScore >= prevScore ? 'Improved' : 'Declined',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: latestScore >= prevScore
+                              ? Colors.green
+                              : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-              const Divider(color: _divider, height: 1),
-            ],
-          );
-        }),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
 
-// ── Bottom Nav ─────────────────────────────────────────────
-}
+  Widget _buildToggle() => Container(
+    decoration: BoxDecoration(
+      color: const Color(0xFF1A1A1A),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(children: [
+      _toggleBtn('Weekly', !_showMonthly,
+              () => setState(() => _showMonthly = false)),
+      _toggleBtn('Monthly', _showMonthly,
+              () => setState(() => _showMonthly = true)),
+    ]),
+  );
 
-// ── Small Widgets ──────────────────────────────────────────────
-class _PlayButton extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _toggleBtn(String label, bool active, VoidCallback onTap) =>
+      Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color:
+              active ? const Color(0xFF7B4FD4) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.grey,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Widget _buildTrendGraph() {
+    final spots = _buildSpots();
+    if (spots.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      width: 28,
-      height: 28,
+      height: 220,
+      padding: const EdgeInsets.fromLTRB(8, 14, 14, 8),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFA78BFA), width: 1.5),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: const Icon(
-        Icons.play_arrow_rounded,
-        color: Color(0xFFA78BFA),
-        size: 16,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 8, bottom: 8),
+            child: Text(
+              'HOVER TIME TREND (seconds)',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+                color: Colors.black87,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  horizontalInterval: 0.5,
+                  verticalInterval: 1,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.grey.shade300, strokeWidth: 1),
+                  getDrawingVerticalLine: (_) =>
+                      FlLine(color: Colors.grey.shade200, strokeWidth: 0.5),
+                ),
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 1,
+                      getTitlesWidget: (v, _) => Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('#${v.toInt()}',
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.black54)),
+                      ),
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 0.5,
+                      reservedSize: 40,
+                      getTitlesWidget: (v, _) => Text(
+                          '${v.toStringAsFixed(1)}s',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.black54)),
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(color: Colors.grey.shade300)),
+                minX: 1,
+                maxX: spots.length.toDouble(),
+                minY: _chartMinY,
+                maxY: _chartMaxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: const Color(0xFF7B4FD4),
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, pct, bar, idx) =>
+                          FlDotCirclePainter(
+                            radius: 5,
+                            color: const Color(0xFF7B4FD4),
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: const Color(0xFF7B4FD4).withOpacity(0.15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSessionRow(Map<String, dynamic> session) {
+    final sessionId = session['session_id'] as String;
+    final tia =
+        (session['avg_time_in_air'] as num?)?.toStringAsFixed(2) ?? '—';
+    final score = (session['score'] as num?)?.toInt() ?? 0;
+    final ts = session['timestamp'];
+    final isExpanded = _expandedSessionId == sessionId;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
+        border: isExpanded
+            ? Border.all(color: const Color(0xFF7B4FD4), width: 1.5)
+            : null,
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _toggleSession(sessionId),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: _scoreColor(score),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text('$score',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15)),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_formatDate(ts),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                        const SizedBox(height: 3),
+                        Text('Hover time: ${tia}s',
+                            style: TextStyle(
+                                color: Colors.grey.shade400,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7B4FD4).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: const Color(0xFF7B4FD4), width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isExpanded ? Icons.stop : Icons.play_arrow,
+                          color: const Color(0xFF7B4FD4),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isExpanded ? 'Close' : 'Replay',
+                          style: const TextStyle(
+                              color: Color(0xFF7B4FD4),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: [
+                  const Divider(color: Color(0xFF333333)),
+                  const SizedBox(height: 8),
+                  if (_loadingReplay)
+                    const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(
+                              color: Color(0xFF7B4FD4)),
+                          SizedBox(height: 12),
+                          Text('Loading drawing...',
+                              style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    )
+                  else if (_replayPoints.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'Drawing still saving, try again in a moment.',
+                        style: TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      height: 340,
+                      child: ReplayScrubber(allPoints: _replayPoints),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

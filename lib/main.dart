@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'core/services/permission_service.dart';
 import 'features/patient/patient_home.dart';
 import 'features/caregiver/caregiver_home.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase — must happen before runApp
+  await Firebase.initializeApp();
+
   await PermissionService.requestAllPermissions();
   runApp(const NeuroGuardApp());
 }
@@ -24,7 +29,7 @@ class NeuroGuardApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
       ),
-      home: const CaregiverHomePage(),
+      home: const PatientHome(), // replace with AuthGate when auth is ready
     );
   }
 }

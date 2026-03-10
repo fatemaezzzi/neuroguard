@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:neuroguard/features/caregiver/cognitest_history_screen.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'drawing_screen.dart';
 
 class CogniTestScreen extends StatelessWidget {
   const CogniTestScreen({super.key});
+
+  // TODO: replace with real patient ID from Firebase Auth when ready
+  static const String _patientId = 'patient_01';
 
   @override
   Widget build(BuildContext context) {
@@ -29,26 +33,20 @@ class CogniTestScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // ── Main Card using fixtheclock.png as background ────────
+              // ── Main Card ───────────────────────────────────────────
               Expanded(
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-
-                    // The lime green card background
                     Positioned.fill(
                       child: Image.asset(
                         'assets/fixtheclock.png',
                         fit: BoxFit.fill,
                       ),
                     ),
-
-                    // Content on top of card
                     Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-
-                        // "FIX THE CLOCK" title asset
                         Padding(
                           padding: const EdgeInsets.only(top: 24),
                           child: Image.asset(
@@ -56,8 +54,6 @@ class CogniTestScreen extends StatelessWidget {
                             height: 36,
                           ),
                         ),
-
-                        // Clock circle asset
                         Expanded(
                           child: Center(
                             child: Padding(
@@ -73,13 +69,20 @@ class CogniTestScreen extends StatelessWidget {
                           ),
                         ),
 
-                        // START TEST button asset
+                        // ── START TEST wired to DrawingScreen ──────────
                         Padding(
                           padding: const EdgeInsets.only(
                               bottom: 28, left: 24, right: 24),
                           child: GestureDetector(
                             onTap: () {
-                              // TODO: Navigate to drawing screen when feature is ready
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const DrawingScreen(
+                                    patientId: _patientId,
+                                  ),
+                                ),
+                              );
                             },
                             child: Image.asset(
                               'assets/startbutton.png',
@@ -96,17 +99,15 @@ class CogniTestScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              // ── Hover Time pill asset ────────────────────────────────
+              // ── Hover Time pill ──────────────────────────────────────
               Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Pill background
                   Image.asset(
                     'assets/hovertime.png',
                     width: double.infinity,
                     fit: BoxFit.fitWidth,
                   ),
-                  // Text overlay on top of the asset
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Row(
@@ -122,7 +123,7 @@ class CogniTestScreen extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '2.3s',
+                          '2.3s', // TODO: load from last Firebase session
                           style: TextStyle(
                             color: Colors.black,
                             fontSize: 28,
@@ -137,7 +138,7 @@ class CogniTestScreen extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              // ── Test History pill asset ──────────────────────────────
+              // ── Test History pill ────────────────────────────────────
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -150,13 +151,11 @@ class CogniTestScreen extends StatelessWidget {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Pill background
                     Image.asset(
                       'assets/testhistory.png',
                       width: double.infinity,
                       fit: BoxFit.fitWidth,
                     ),
-                    // Text overlay
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Row(
@@ -171,11 +170,7 @@ class CogniTestScreen extends StatelessWidget {
                               letterSpacing: 0.8,
                             ),
                           ),
-                          Icon(
-                            Icons.chevron_right,
-                            color: Colors.black,
-                            size: 26,
-                          ),
+                          Icon(Icons.chevron_right, color: Colors.black, size: 26),
                         ],
                       ),
                     ),
@@ -185,11 +180,8 @@ class CogniTestScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // ── Bottom Nav Bar ───────────────────────────────────────
-              // ── Bottom Nav Bar ───────────────────────────────────────
-              PatientBottomNav(
-                onSettingsTap: () {},
-              ),
+              // ── Bottom Nav ───────────────────────────────────────────
+              PatientBottomNav(onSettingsTap: () {}),
 
               const SizedBox(height: 8),
             ],
@@ -199,5 +191,3 @@ class CogniTestScreen extends StatelessWidget {
     );
   }
 }
-
-// ── Bottom Nav Circle Button ───────────────────────────────────────────────────

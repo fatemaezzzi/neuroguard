@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "880681485138",
+    "project_id": "neuroguard-cab3d",
+    "storage_bucket": "neuroguard-cab3d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:880681485138:android:56774106919e8a51dd308b",
+        "android_client_info": {
+          "package_name": "com.example.neuroguard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA129HGMX43fqLEANwCaXg5tf--yr-IVg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
