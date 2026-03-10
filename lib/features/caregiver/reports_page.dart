@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'cognitest_history_screen.dart';
 
 class ReportsPage extends StatelessWidget {
   const ReportsPage({super.key});
@@ -90,6 +91,7 @@ class ReportsPage extends StatelessWidget {
               _buildCognitiveReport(),
               const SizedBox(height: 20),
               _buildWeeklySummary(),
+              const SizedBox(height: 20),
               const SizedBox(height: 32),
             ],
           ),
@@ -448,6 +450,56 @@ class ReportsPage extends StatelessWidget {
         ),
       );
     });
+  }
+
+  // ── COGNITIVE HISTORY BUTTON ──────────────────────────────────────────
+  Widget _buildCognitiveHistory() {
+    return LayoutBuilder(builder: (context, constraints) {
+      final double w = constraints.maxWidth;
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CogniTestHistoryScreen(),
+            ),
+          );
+        },
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset(
+              'assets/cognitivehistorybutton.png',
+              width: w,
+              fit: BoxFit.fitWidth,
+            ),
+            const Text('COGNITIVE HISTORY', style: _bigBlack),
+          ],
+        ),
+      );
+    });
+  }
+
+  // ── BOTTOM NAV ────────────────────────────────────────────────────────
+  Widget _buildBottomNav() {
+    return Builder(
+      builder: (context) => Container(
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _NavCircle(
+              iconAsset: 'assets/Vectorhome.png',
+              onTap: () => Navigator.pop(context),
+            ),
+            const _NavCircle(
+              iconAsset: 'assets/Vectorsettings.png',
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

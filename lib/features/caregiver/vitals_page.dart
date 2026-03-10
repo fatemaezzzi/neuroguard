@@ -35,15 +35,14 @@ class VitalsPage extends StatelessWidget {
     color: Colors.black,
   );
 
-  static const double _overlapVeloStatus = 28.0;
+  static const double _overlapVeloStatus   = 28.0;
   static const double _overlapStatusPocket = -23.0;
-  static const double _overlapPocketVibra = 23.0;
+  static const double _overlapPocketVibra  = 23.0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -55,9 +54,7 @@ class VitalsPage extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: CaregiverBottomNav(
-        onSettingsTap: () {},
-      ),
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -68,13 +65,13 @@ class VitalsPage extends StatelessWidget {
 
         final double h1 = w * (190 / 364);
         final double h2 = w * (159 / 364);
-        final double h3 = w * (81 / 364);
+        final double h3 = w * (81  / 364);
         final double h4 = w * (151 / 350);
 
-        final double topVelo = 0;
+        final double topVelo   = 0;
         final double topStatus = h1 - _overlapVeloStatus;
         final double topPocket = topStatus + h2 - _overlapStatusPocket;
-        final double topVibra = topPocket + h3 - _overlapPocketVibra;
+        final double topVibra  = topPocket + h3 - _overlapPocketVibra;
         final double totalHeight = topVibra + h4;
 
         return SizedBox(
@@ -249,4 +246,49 @@ class VitalsPage extends StatelessWidget {
     );
   }
 
+  Widget _buildBottomNav() {
+    return Builder(
+      builder: (context) => Container(
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _NavCircle(
+              iconAsset: 'assets/Vectorhome.png',
+              onTap: () => Navigator.pop(context),
+            ),
+            const _NavCircle(
+              iconAsset: 'assets/Vectorsettings.png',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavCircle extends StatelessWidget {
+  final String iconAsset;
+  final VoidCallback? onTap;
+  const _NavCircle({required this.iconAsset, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        height: 62,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Image.asset('assets/glassbubble.png',
+                width: 62, height: 62, fit: BoxFit.cover),
+            Image.asset(iconAsset, width: 28, height: 28),
+          ],
+        ),
+      ),
+    );
+  }
 }
