@@ -13,6 +13,7 @@ void main() async {
 
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
+      name: 'neuroguard',          // give it an explicit unique name
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
