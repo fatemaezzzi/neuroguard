@@ -1,9 +1,11 @@
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'core/services/permission_service.dart';
+import 'core/services/location_service.dart'; // auto-start GPS on launch
 import 'features/patient/patient_home.dart';
 import 'features/caregiver/caregiver_home.dart';
 import 'firebase_options.dart';
@@ -29,6 +31,17 @@ void main() async {
   }
 
   await PermissionService.requestAllPermissions();
+
+  // ── Auto-start GPS tracking on the patient device ─────────────────────────
+  // This is the key fix: without this, location never pushes to Firestore
+  // and the caregiver map stays frozen. startTracking() is safe to call here
+  // — it's a singleton, guards against double-starts internally, and runs
+  // a 30-second periodic timer in the background for the life of the app.
+  //
+  // TODO: Replace 'patient_01' with the real auth UID once login is wired.
+  await LocationService().initialise();
+  unawaited(LocationService().startTracking(patientId: 'patient_01'));
+
   runApp(const NeuroGuardApp());
 }
 

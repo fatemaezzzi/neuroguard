@@ -214,10 +214,14 @@ class _TrackerPageState extends State<TrackerPage>
             final location = locationSnapshot.data;
             final safeZone = zoneSnapshot.data;
 
-            // On first data received, stop loading
-            if (_isLoadingLocation && location != null) {
+            // On first data received, stop loading and cache location for centre button
+            if (location != null &&
+                (_isLoadingLocation || _patientLocation?.latitude != location.latitude || _patientLocation?.longitude != location.longitude)) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) setState(() => _isLoadingLocation = false);
+                if (mounted) setState(() {
+                  _isLoadingLocation = false;
+                  _patientLocation = location; // cache so ⊕ button works instantly
+                });
               });
             }
 
@@ -226,12 +230,9 @@ class _TrackerPageState extends State<TrackerPage>
                 ? LatLng(location.latitude, location.longitude)
                 : const LatLng(19.0760, 72.8777);
 
-            // If map is ready and we have a new location, animate to it
-            if (_mapReady && location != null) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _mapController.move(patientLatLng, _mapController.camera.zoom);
-              });
-            }
+            // NOTE: We deliberately do NOT auto-pan on every location update.
+            // Auto-panning fights the caregiver when they try to scroll the map.
+            // Use the ⊕ button (top-right) to snap back to the patient.
 
             return FlutterMap(
               mapController: _mapController,
@@ -852,12 +853,12 @@ class _TrackerPageState extends State<TrackerPage>
   // ACTIONS
   // ──────────────────────────────────────────────────────────────────────────
 
-  void _centreOnPatient() async {
-    final location =
-    await LocationService.getPatientLocation(widget.patientId);
-    if (location != null && _mapReady) {
+  void _centreOnPatient() {
+    // _patientLocation is kept fresh by the StreamBuilder above —
+    // no extra network call needed, so the button is instant.
+    if (_patientLocation != null && _mapReady) {
       _mapController.move(
-        LatLng(location.latitude, location.longitude),
+        LatLng(_patientLocation!.latitude, _patientLocation!.longitude),
         17.0,
       );
     }

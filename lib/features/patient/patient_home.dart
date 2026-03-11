@@ -296,24 +296,19 @@ class _PatientHomeState extends State<PatientHome> {
   // LOCATION button handler
   // ───────────────────────────────────────────────
   Future<void> _handleLocationTap() async {
+    // Show loading briefly so patient knows tap registered
     setState(() => _isLocating = true);
-
-    final result = await NavigateHomeService().triggerNavigateHome(
-      patientId: _patientId,
-    );
-
+    await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     setState(() => _isLocating = false);
 
-    if (result.success) {
-      final double meters = result.distanceMeters ?? 0;
-      final String distanceText = meters < 1000
-          ? '${meters.toStringAsFixed(0)}m from home'
-          : '${(meters / 1000).toStringAsFixed(1)}km from home';
-      _toast('Directions opened · $distanceText');
-    } else {
-      _showErrorDialog(result.errorMessage ?? 'Something went wrong.');
-    }
+    // Open the in-app navigation map — no browser, no external app
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NavigateHomePage(patientId: _patientId),
+      ),
+    );
   }
 
   // ───────────────────────────────────────────────

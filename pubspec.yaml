@@ -45,6 +45,7 @@ dependencies:
   flutter_local_notifications: ^17.2.4
   url_launcher: ^6.3.2
   flutter_tts: ^4.2.5
+  http: ^1.6.0
 
 
   # Firebase dependencies (Fixed Indentation)
