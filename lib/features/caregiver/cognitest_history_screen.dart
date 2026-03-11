@@ -571,7 +571,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7B4FD4).withOpacity(0.15),
+                      color: const Color(0xFF7B4FD4).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                           color: const Color(0xFF7B4FD4), width: 1),

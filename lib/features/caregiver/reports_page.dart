@@ -315,7 +315,7 @@ class ReportsPage extends StatelessWidget {
           drawVerticalLine: false,
           horizontalInterval: 0.5,
           getDrawingHorizontalLine: (v) =>
-              FlLine(color: Colors.grey.withOpacity(0.3), strokeWidth: 1),
+              FlLine(color: Colors.grey.withValues(alpha: 0.3), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -363,7 +363,7 @@ class ReportsPage extends StatelessWidget {
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.blueGrey.withOpacity(0.15),
+              color: Colors.blueGrey.withValues(alpha: 0.15),
             ),
           ),
         ],
