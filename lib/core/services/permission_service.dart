@@ -2,7 +2,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 class PermissionService {
 
-  /// Call this once on app startup (e.g., in main.dart or splash screen)
+  /// Call this once on app startup (e.g., in main.dart or splash screen).
+  /// Each permission is only requested if it has not been granted yet.
   static Future<void> requestAllPermissions() async {
     await _requestMicrophonePermission();
     await _requestCameraPermission();
@@ -11,27 +12,40 @@ class PermissionService {
 
   // --- MICROPHONE ---
   static Future<bool> _requestMicrophonePermission() async {
+    // ✅ Check first — skip entirely if already granted
+    if (await Permission.microphone.isGranted) {
+      print('Microphone: already GRANTED, skipping request');
+      return true;
+    }
+
     final status = await Permission.microphone.request();
 
     if (status.isGranted) {
       print('Microphone: GRANTED');
       return true;
     } else if (status.isPermanentlyDenied) {
-      // User clicked "Never ask again" — send them to Settings
-      openAppSettings();
+      // ✅ Do NOT auto-open settings — let the user trigger this from the UI
+      print('Microphone: PERMANENTLY DENIED (user must enable in Settings manually)');
     }
     return false;
   }
 
   // --- CAMERA ---
   static Future<bool> _requestCameraPermission() async {
+    // ✅ Check first — skip entirely if already granted
+    if (await Permission.camera.isGranted) {
+      print('Camera: already GRANTED, skipping request');
+      return true;
+    }
+
     final status = await Permission.camera.request();
 
     if (status.isGranted) {
       print('Camera: GRANTED');
       return true;
     } else if (status.isPermanentlyDenied) {
-      openAppSettings();
+      // ✅ Do NOT auto-open settings — let the user trigger this from the UI
+      print('Camera: PERMANENTLY DENIED (user must enable in Settings manually)');
     }
     return false;
   }
@@ -39,7 +53,26 @@ class PermissionService {
   // --- LOCATION ---
   // Note: Background location must be requested AFTER foreground is granted
   static Future<bool> _requestLocationPermission() async {
-    // Step 1: Request foreground location first
+    // ✅ Check foreground first — skip if already granted
+    if (await Permission.location.isGranted) {
+      print('Location (foreground): already GRANTED, skipping request');
+
+      // Still check background separately
+      if (!await Permission.locationAlways.isGranted) {
+        final background = await Permission.locationAlways.request();
+        if (background.isGranted) {
+          print('Location (background): GRANTED');
+        } else if (background.isPermanentlyDenied) {
+          // ✅ Do NOT auto-open settings
+          print('Location (background): PERMANENTLY DENIED');
+        }
+      } else {
+        print('Location (background): already GRANTED, skipping request');
+      }
+      return true;
+    }
+
+    // Step 1: Request foreground location
     final foreground = await Permission.location.request();
 
     if (!foreground.isGranted) {
@@ -49,14 +82,19 @@ class PermissionService {
 
     print('Location (foreground): GRANTED');
 
-    // Step 2: Now request background location (Android 10+)
-    final background = await Permission.locationAlways.request();
-
-    if (background.isGranted) {
-      print('Location (background): GRANTED');
+    // Step 2: Request background only after foreground is confirmed (Android 10+)
+    if (!await Permission.locationAlways.isGranted) {
+      final background = await Permission.locationAlways.request();
+      if (background.isGranted) {
+        print('Location (background): GRANTED');
+        return true;
+      } else if (background.isPermanentlyDenied) {
+        // ✅ Do NOT auto-open settings
+        print('Location (background): PERMANENTLY DENIED');
+      }
+    } else {
+      print('Location (background): already GRANTED, skipping request');
       return true;
-    } else if (background.isPermanentlyDenied) {
-      openAppSettings();
     }
 
     return false;
@@ -71,4 +109,11 @@ class PermissionService {
 
   static Future<bool> isLocationGranted() async =>
       await Permission.location.isGranted;
+
+  // --- OPEN SETTINGS (call this only from a UI button/dialog, never automatically) ---
+  /// Show this only when a feature fails due to a permanently denied permission.
+  /// Example: display a dialog with "Go to Settings" button that calls this.
+  static Future<void> openSettings() async {
+    await openAppSettings();
+  }
 }

@@ -352,20 +352,47 @@ class GeofenceService {
 
   /// Save a new safe zone to Firestore.
   /// Call from [SafeZoneEditorPage] when caregiver taps "Save".
+  /// Save a new safe zone to Firestore.
+  ///
+  /// Critically: does NOT blindly write isInsideZone: true.
+  /// Instead, reads the patient's last known liveLocation from Firestore
+  /// and computes the actual distance to the new zone centre.
+  /// This fixes the bug where saving a zone always reset status to "Inside"
+  /// even when the patient was 14km away.
   Future<void> saveSafeZone({
     required String patientId,
     required double centerLat,
     required double centerLng,
     required double radiusMeters,
   }) async {
+    // Read patient's current position to compute real inside/outside status
+    double distanceFromCenter = 0.0;
+    bool   isInsideZone       = true; // safe default if no location yet
+
+    try {
+      final doc  = await _db.collection('users').doc(patientId).get();
+      final data = doc.data();
+      final loc  = data?['liveLocation'] as Map<String, dynamic>?;
+      if (loc != null) {
+        final patLat = (loc['latitude']  as num).toDouble();
+        final patLng = (loc['longitude'] as num).toDouble();
+        distanceFromCenter = Geolocator.distanceBetween(
+          patLat, patLng, centerLat, centerLng,
+        );
+        isInsideZone = distanceFromCenter <= radiusMeters;
+      }
+    } catch (_) {
+      // If fetch fails, leave defaults — better than crashing
+    }
+
     await _db.collection('users').doc(patientId).update({
       'safeZone': {
-        'centerLat': centerLat,
-        'centerLng': centerLng,
-        'radiusMeters': radiusMeters,
-        'isInsideZone': true,        // Assume inside when zone is first set
-        'distanceFromCenter': 0.0,
-        'lastUpdated': FieldValue.serverTimestamp(),
+        'centerLat':          centerLat,
+        'centerLng':          centerLng,
+        'radiusMeters':       radiusMeters,
+        'isInsideZone':       isInsideZone,       // ← computed, not hardcoded
+        'distanceFromCenter': distanceFromCenter, // ← actual distance
+        'lastUpdated':        FieldValue.serverTimestamp(),
       }
     });
   }
