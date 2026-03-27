@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11,12 +10,22 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Initialize Firebase
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
 
+  // 2. Start the app UI immediately so it doesn't get stuck on a white screen!
+  runApp(const NeuroGuardApp());
+
+  // 3. Run your tests and permission requests in the background
+  _runBackgroundSetup();
+}
+
+// Helper function to run async tasks without blocking the UI
+Future<void> _runBackgroundSetup() async {
   try {
     final result = await FirebaseFirestore.instance
         .collection('users')
@@ -28,7 +37,6 @@ void main() async {
   }
 
   await PermissionService.requestAllPermissions();
-  runApp(const NeuroGuardApp());
 }
 
 class NeuroGuardApp extends StatelessWidget {
