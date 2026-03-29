@@ -4,6 +4,7 @@ import 'reports_page.dart';
 import 'all_about_dementia.dart'; // contains AllAboutDementiaPage1
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
+import 'package:neuroguard/features/shared/settings_screen.dart';
 // =============================================================================
 //  COLOUR TOKENS
 // =============================================================================
@@ -38,10 +39,13 @@ class CaregiverHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      bottomNavigationBar: CaregiverBottomNav(
-        onSettingsTap: () {}, // TODO: wire settings page when ready
-      ),
-      body: SafeArea(
+        bottomNavigationBar: CaregiverBottomNav(
+        onSettingsTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    ),
+        ),
+    body: SafeArea(
         top: false,
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),

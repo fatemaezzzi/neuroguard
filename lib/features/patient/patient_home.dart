@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:neuroguard/features/patient/cognitest_screen.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/patient/navigate_home_service.dart';
+import 'package:neuroguard/features/shared/settings_screen.dart';
 
 void main() {
   runApp(const NeuroGuardApp());
@@ -68,7 +69,15 @@ class _PatientHomeState extends State<PatientHome> {
                 ),
               ),
             ),
-            PatientBottomNav(onSettingsTap: () {}),
+            // ── Bottom Nav ───────────────────────────────────────────
+            PatientBottomNav(
+              onSettingsTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              ),
+            ),
+
+            const SizedBox(height: 8),
           ],
         ),
       ),

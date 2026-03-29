@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:neuroguard/features/caregiver/cognitest_history_screen.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'drawing_screen.dart';
+import 'package:neuroguard/features/shared/settings_screen.dart';
 
 class CogniTestScreen extends StatelessWidget {
   const CogniTestScreen({super.key});
@@ -181,13 +182,18 @@ class CogniTestScreen extends StatelessWidget {
               const SizedBox(height: 20),
 
               // ── Bottom Nav ───────────────────────────────────────────
-              PatientBottomNav(onSettingsTap: () {}),
-
-              const SizedBox(height: 8),
-            ],
+          PatientBottomNav(
+            onSettingsTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
           ),
+
+            const SizedBox(height: 8),
+        ],
         ),
       ),
+    ),
     );
   }
 }

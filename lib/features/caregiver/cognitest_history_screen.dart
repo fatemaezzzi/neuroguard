@@ -7,11 +7,10 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/core/services/cognitest_service.dart';
 import 'package:neuroguard/core/models/stroke_point.dart';
 import 'package:neuroguard/features/patient/replay_scrubber.dart';
+import 'package:neuroguard/features/shared/settings_screen.dart';
 
 class CogniTestHistoryScreen extends StatefulWidget {
-  // BUG FIX 1: caller passes their role so the bottom nav home button
-  // routes to the correct screen (patient → PatientHome, caregiver → CaregiverHome)
-  final String callerRole; // 'patient' or 'caregiver'
+  final String callerRole;
 
   const CogniTestHistoryScreen({
     super.key,
@@ -69,7 +68,6 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     });
   }
 
-  // BUG FIX 1: navigate to the correct home based on who opened this screen
   void _goHome() {
     if (widget.callerRole == 'patient') {
       Navigator.pushAndRemoveUntil(
@@ -86,6 +84,13 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     }
   }
 
+  void _goSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
   List<FlSpot> _buildSpots() {
     final chronological = _sessions.reversed.toList();
     return List.generate(chronological.length, (i) {
@@ -97,15 +102,15 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
 
   double get _chartMinY {
     if (_sessions.isEmpty) return 0;
-    final vals = _sessions
-        .map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
+    final vals =
+    _sessions.map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
     return (vals.reduce((a, b) => a < b ? a : b) - 0.5).clamp(0.0, 99.0);
   }
 
   double get _chartMaxY {
     if (_sessions.isEmpty) return 5;
-    final vals = _sessions
-        .map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
+    final vals =
+    _sessions.map((s) => (s['avg_time_in_air'] as num?)?.toDouble() ?? 0.0);
     return vals.reduce((a, b) => a > b ? a : b) + 0.5;
   }
 
@@ -133,7 +138,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ─────────────────────────────────────────────────
+            // ── Header ───────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -203,17 +208,17 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
               ),
             ),
 
-            // BUG FIX 1: bottom nav home button routes based on callerRole
+            // ── Bottom Nav ───────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: isPatient
                   ? PatientBottomNav(
                 onHomeTap: _goHome,
-                onSettingsTap: () {},
+                onSettingsTap: _goSettings,
               )
                   : CaregiverBottomNav(
                 onHomeTap: _goHome,
-                onSettingsTap: () {},
+                onSettingsTap: _goSettings,
               ),
             ),
           ],
@@ -279,8 +284,8 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                         fontSize: 32)),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: _scoreColor(latestScore),
                     borderRadius: BorderRadius.circular(8),
@@ -319,17 +324,15 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w900,
-                    color: prevScore != null
-                        ? _scoreColor(prevScore)
-                        : Colors.grey,
+                    color:
+                    prevScore != null ? _scoreColor(prevScore) : Colors.grey,
                   ),
                 ),
                 Text(
                   prevScore != null
                       ? '${prevTia}s hover'
                       : 'No previous test',
-                  style:
-                  const TextStyle(color: Colors.grey, fontSize: 12),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
                 if (prevScore != null)
                   Row(
@@ -377,30 +380,28 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     ]),
   );
 
-  Widget _toggleBtn(String label, bool active, VoidCallback onTap) =>
-      Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color:
-              active ? const Color(0xFF7B4FD4) : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: active ? Colors.white : Colors.grey,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
+  Widget _toggleBtn(String label, bool active, VoidCallback onTap) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF7B4FD4) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? Colors.white : Colors.grey,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildTrendGraph() {
     final spots = _buildSpots();
@@ -531,8 +532,8 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
             borderRadius: BorderRadius.circular(16),
             onTap: () => _toggleSession(sessionId),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 14),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
                   Container(
@@ -562,8 +563,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                         const SizedBox(height: 3),
                         Text('Hover time: ${tia}s',
                             style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 12)),
+                                color: Colors.grey.shade400, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -571,7 +571,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7B4FD4).withValues(alpha: 0.15),
+                      color: const Color(0xFF7B4FD4).withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                           color: const Color(0xFF7B4FD4), width: 1),

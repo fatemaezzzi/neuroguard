@@ -60,7 +60,7 @@ dependencies:
   firebase_storage: ^12.1.0
   firebase_database: ^11.1.0
   qr_flutter: ^4.1.0
-  # mobile_scanner: ^5.0.0
+  mobile_scanner: ^5.0.0
   flutter_lints: ^5.0.0
 
 dev_dependencies:

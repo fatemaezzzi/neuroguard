@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'cognitest_history_screen.dart';
+import 'package:neuroguard/features/shared/settings_screen.dart';
 
 class ReportsPage extends StatelessWidget {
   const ReportsPage({super.key});
@@ -79,7 +80,14 @@ class ReportsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       bottomNavigationBar: CaregiverBottomNav(
-        onSettingsTap: () {},
+        onSettingsTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SettingsScreen(),
+            ),
+          );
+        },
       ),
       body: SafeArea(
         child: SingleChildScrollView(
