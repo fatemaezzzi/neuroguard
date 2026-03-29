@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,7 +10,6 @@ import 'features/auth/auth_gate.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -17,6 +17,9 @@ void main() async {
   }
 
   await PermissionService.requestAllPermissions();
+  await LocationService().initialise();
+  // GPS tracking will start after login once we have the real patient UID
+  // LocationService().startTracking() is called from PatientHome after auth
 
   runApp(const NeuroGuardApp());
 }
