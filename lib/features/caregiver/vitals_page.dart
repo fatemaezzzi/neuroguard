@@ -1,10 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'package:neuroguard/core/services/pocket_check_service.dart';
 
-class VitalsPage extends StatelessWidget {
+class VitalsPage extends StatefulWidget {
   const VitalsPage({super.key});
 
+  @override
+  State<VitalsPage> createState() => _VitalsPageState();
+}
+
+class _VitalsPageState extends State<VitalsPage> {
+  // ── Change this to your real patient ID ──────────────────────────────
+  static const String _patientId = 'patient_01';
+
+  // Live values read from Firestore
+  String _pocketStatus    = 'UNKNOWN';
+  String _lastVibrationTime = '--:--';
+  String _sleepStatus     = 'SLEEPING';
+  String _sleepSubtitle   = 'low movement, on bed';
+
+  late final PocketCheckService _pocketService;
+
+  @override
+  void initState() {
+    super.initState();
+    _pocketService = PocketCheckService(patientId: _patientId);
+    _pocketService.initialize();  // starts Firebase listener + passive timer
+    _listenToFirestore();
+  }
+
+  @override
+  void dispose() {
+    _pocketService.dispose();
+    super.dispose();
+  }
+
+  // ─── Listen to Firestore for live sensor updates ──────────────────────
+  void _listenToFirestore() {
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(_patientId)
+        .snapshots()
+        .listen((snapshot) {
+      if (!snapshot.exists || !mounted) return;
+      final data = snapshot.data() as Map<String, dynamic>?;
+
+      final sensors = data?['sensors'] as Map<String, dynamic>?;
+      if (sensors != null) {
+        final ts = sensors['pocket_check_timestamp'];
+        String timeStr = '--:--';
+        if (ts != null && ts is Timestamp) {
+          final dt = ts.toDate();
+          timeStr =
+          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        }
+        setState(() {
+          _pocketStatus      = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+          _lastVibrationTime = timeStr;
+        });
+      }
+    });
+  }
+
+  // ─── Derived display text from pocket status ──────────────────────────
+  String get _pocketStatusLabel => switch (_pocketStatus) {
+    'ON_PERSON' => 'ON PERSON',
+    'ON_TABLE'  => 'NOT ON PERSON',
+    'CHECKING'  => 'CHECKING...',
+    _           => 'UNKNOWN',
+  };
+
+  // ─── Text Styles ──────────────────────────────────────────────────────
   static const TextStyle _hugeBlack = TextStyle(
     fontFamily: 'MicrosoftSansSerifBold',
     fontWeight: FontWeight.w900,
@@ -104,10 +172,10 @@ class VitalsPage extends StatelessWidget {
                             Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
-                              children: const [
-                                Text('SLEEPING', style: _hugeBlack),
-                                SizedBox(height: 2),
-                                Text('low movement, on bed', style: _smallBody),
+                              children: [
+                                Text(_sleepStatus, style: _hugeBlack),
+                                const SizedBox(height: 2),
+                                Text(_sleepSubtitle, style: _smallBody),
                               ],
                             ),
                           ],
@@ -118,7 +186,7 @@ class VitalsPage extends StatelessWidget {
                 ),
               ),
 
-              // ── LAYER 2: pocketcheck ──────────────────────────────────
+              // ── LAYER 2: pocketcheck — arrow now triggers the check ───
               Positioned(
                 top: topPocket,
                 left: 0,
@@ -136,10 +204,19 @@ class VitalsPage extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             const Text('POCKET CHECK', style: _hugeBlack),
-                            Image.asset('assets/arrow.png',
+                            // Tapping the arrow triggers the remote check
+                            GestureDetector(
+                              onTap: () async {
+                                await PocketCheckService.triggerRemoteCheck(
+                                    _patientId);
+                              },
+                              child: Image.asset(
+                                'assets/arrow.png',
                                 width: 30,
                                 height: 30,
-                                color: const Color(0xFFCCFF00)),
+                                color: const Color(0xFFCCFF00),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -148,7 +225,7 @@ class VitalsPage extends StatelessWidget {
                 ),
               ),
 
-              // ── LAYER 3: lastvibrationtest ────────────────────────────
+              // ── LAYER 3: lastvibrationtest — live Firestore data ──────
               Positioned(
                 top: topVibra,
                 left: 0,
@@ -161,12 +238,15 @@ class VitalsPage extends StatelessWidget {
                     Positioned.fill(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text('LAST VIBRATION TEST', style: _hugeBlack),
-                          SizedBox(height: 4),
-                          Text('10:30', style: _smallBold),
-                          SizedBox(height: 2),
-                          Text('ON/OFF PERSON', style: _hugeBlack),
+                        children: [
+                          const Text('LAST VIBRATION TEST',
+                              style: _hugeBlack),
+                          const SizedBox(height: 4),
+                          // Live timestamp pulled from Firestore
+                          Text(_lastVibrationTime, style: _smallBold),
+                          const SizedBox(height: 2),
+                          // Live ON/NOT ON PERSON status
+                          Text(_pocketStatusLabel, style: _hugeBlack),
                         ],
                       ),
                     ),

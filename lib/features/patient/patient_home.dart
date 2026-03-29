@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:neuroguard/features/patient/cognitest_screen.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
+import 'package:neuroguard/features/patient/navigate_home_service.dart';
 
 void main() {
   runApp(const NeuroGuardApp());
@@ -33,10 +34,16 @@ class PatientHome extends StatefulWidget {
 }
 
 class _PatientHomeState extends State<PatientHome> {
+  // Replace with your actual auth / session provider
+  static const String _patientId = 'patient_01';
+
   static const Color limeGreen  = Color(0xFFB5E800);
   static const Color purple     = Color(0xFF7B52D9);
   static const Color crimsonRed = Color(0xFFBB0000);
   static const Color darkBg     = Color(0xFF1A1A1A);
+
+  // Tracks whether the LOCATION button is waiting for GPS + Firestore
+  bool _isLocating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +52,7 @@ class _PatientHomeState extends State<PatientHome> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Top flower PNG with greeting overlay ──
             _buildFlowerHeader(),
-
-            // ── Scrollable content area ──
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -64,11 +68,7 @@ class _PatientHomeState extends State<PatientHome> {
                 ),
               ),
             ),
-
-            // ── Bottom navigation ──
-            PatientBottomNav(
-              onSettingsTap: () {},
-            ),
+            PatientBottomNav(onSettingsTap: () {}),
           ],
         ),
       ),
@@ -76,7 +76,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FLOWER HEADER
+  // FLOWER HEADER  (unchanged)
   // ───────────────────────────────────────────────
   Widget _buildFlowerHeader() {
     return SizedBox(
@@ -86,10 +86,7 @@ class _PatientHomeState extends State<PatientHome> {
         alignment: Alignment.center,
         children: [
           Positioned.fill(
-            child: Image.asset(
-              'assets/top-flower-blob.png',
-              fit: BoxFit.fill,
-            ),
+            child: Image.asset('assets/top-flower-blob.png', fit: BoxFit.fill),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -126,7 +123,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // HELP ME
+  // HELP ME  (unchanged)
   // ───────────────────────────────────────────────
   Widget _buildHelpMeButton() {
     return GestureDetector(
@@ -163,6 +160,8 @@ class _PatientHomeState extends State<PatientHome> {
 
   // ───────────────────────────────────────────────
   // UNEVEN 2 × 2 GRID
+  // LOCATION cell now has loading state + navigate-home logic.
+  // TAKE ME HOME cell has been removed as requested.
   // ───────────────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
@@ -174,24 +173,17 @@ class _PatientHomeState extends State<PatientHome> {
         Expanded(
           child: Column(
             children: [
-              _gridCell(
-                height: 140,
-                color: limeGreen,
-                icon: Icons.location_on_rounded,
-                iconColor: Colors.black,
-                label: 'LOCATION',
-                labelColor: Colors.black,
-                onTap: () => _toast('Sharing your location…'),
-              ),
+              // ─── LOCATION button (navigate home + notify caregiver) ───
+              _buildLocationCell(),
               const SizedBox(height: gap),
               _gridCell(
                 height: 105,
                 color: purple,
-                icon: Icons.home_rounded,
+                icon: Icons.phone_rounded,
                 iconColor: Colors.white,
-                label: 'TAKE ME\nHOME',
+                label: 'CALL\nFAMILY',
                 labelColor: Colors.white,
-                onTap: () => _toast('Starting navigation home…'),
+                onTap: () => _toast('Calling your family…'),
               ),
             ],
           ),
@@ -206,21 +198,21 @@ class _PatientHomeState extends State<PatientHome> {
               _gridCell(
                 height: 105,
                 color: purple,
-                icon: Icons.phone_rounded,
-                iconColor: Colors.white,
-                label: 'CALL FAMILY',
-                labelColor: Colors.white,
-                onTap: () => _toast('Calling your family…'),
-              ),
-              const SizedBox(height: gap),
-              _gridCell(
-                height: 140,
-                color: purple,
                 icon: Icons.medical_services_rounded,
                 iconColor: Colors.white,
                 label: 'MEDICINE',
                 labelColor: Colors.white,
                 onTap: () => _toast('Opening medicine schedule…'),
+              ),
+              const SizedBox(height: gap),
+              _gridCell(
+                height: 140,
+                color: purple,
+                icon: Icons.people_rounded,
+                iconColor: Colors.white,
+                label: 'CAREGIVER',
+                labelColor: Colors.white,
+                onTap: () => _toast('Contacting caregiver…'),
               ),
             ],
           ),
@@ -229,45 +221,69 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  Widget _gridCell({
-    required double height,
-    required Color color,
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required Color labelColor,
-    required VoidCallback onTap,
-  }) {
+  // ───────────────────────────────────────────────
+  // LOCATION cell — shows spinner while working
+  // ───────────────────────────────────────────────
+  Widget _buildLocationCell() {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
+      onTap: _isLocating ? null : _handleLocationTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         width: double.infinity,
-        height: height,
+        height: 140,
         decoration: BoxDecoration(
-          color: color,
+          // Dims slightly while loading so the patient knows the tap registered
+          color: _isLocating ? limeGreen.withOpacity(0.55) : limeGreen,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.35),
+              color: limeGreen.withOpacity(0.35),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Column(
+        child: _isLocating
+            ? const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: CircularProgressIndicator(
+                  color: Colors.black,
+                  strokeWidth: 3,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'FINDING\nROUTE…',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        )
+            : const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: iconColor, size: 44),
-            const SizedBox(height: 8),
+            Icon(Icons.location_on_rounded, color: Colors.black, size: 44),
+            SizedBox(height: 8),
             Text(
-              label,
+              'LOCATION',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: labelColor,
+                color: Colors.black,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.8,
-                height: 1.3,
               ),
             ),
           ],
@@ -277,7 +293,68 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FIX THE CLOCK
+  // LOCATION button handler
+  // ───────────────────────────────────────────────
+  Future<void> _handleLocationTap() async {
+    // Show loading briefly so patient knows tap registered
+    setState(() => _isLocating = true);
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    setState(() => _isLocating = false);
+
+    // Open the in-app navigation map — no browser, no external app
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NavigateHomePage(patientId: _patientId),
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────
+  // Error dialog — large text, easy to read
+  // ───────────────────────────────────────────────
+  void _showErrorDialog(String message) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Could Not Navigate',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 22,
+          ),
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 18,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                color: Color(0xFFB5E800),
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────
+  // FIX THE CLOCK  (unchanged)
   // ───────────────────────────────────────────────
   Widget _buildFixTheClockButton() {
     return GestureDetector(
@@ -340,7 +417,57 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // Helper: show a floating snack-bar
+  // Generic grid cell builder  (unchanged)
+  // ───────────────────────────────────────────────
+  Widget _gridCell({
+    required double height,
+    required Color color,
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required Color labelColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: iconColor, size: 44),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: labelColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────
+  // Toast helper  (unchanged)
   // ───────────────────────────────────────────────
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(

@@ -4,16 +4,6 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -60,12 +50,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAA129HGMX43fqLEANwCaXg5tf--yr-IVg',
-    appId: '1:880681485138:android:56774106919e8a51dd308b',
-    messagingSenderId: '880681485138',
-    projectId: 'neuroguard-cab3d',
-    databaseURL: 'https://neuroguard-cab3d-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'neuroguard-cab3d.firebasestorage.app',
+    apiKey: 'AIzaSyAChw8QAL60zzchymx_4B0IfjXvj12Hq4o',
+    appId: '1:10529329568:android:1fc10082530019f480d4c5',
+    messagingSenderId: '10529329568',
+    projectId: 'neuroguard-1f865',
+    storageBucket: 'neuroguard-1f865.firebasestorage.app',
   );
 
 }
