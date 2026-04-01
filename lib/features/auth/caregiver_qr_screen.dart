@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:convert';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
-import 'package:neuroguard/features/caregiver/caregiver_home.dart';
 
 // Shown to the caregiver RIGHT AFTER signup.
 // They show this screen to the patient who then scans it.

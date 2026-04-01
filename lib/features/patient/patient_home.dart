@@ -75,6 +75,10 @@ class _PatientHomeState extends State<PatientHome> {
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
+              onHomeTap: () =>  Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PatientHome()),
+              ),
             ),
 
             const SizedBox(height: 8),
