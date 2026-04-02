@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'vitals_page.dart';
 import 'reports_page.dart';
-import 'all_about_dementia.dart'; // contains AllAboutDementiaPage1
+import 'all_about_dementia.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
+import 'package:neuroguard/core/services/auth_service.dart';
+
 // =============================================================================
 //  COLOUR TOKENS
 // =============================================================================
@@ -22,14 +24,51 @@ const String kImgSnapTrigger = 'assets/snaptriggerbutton.png';
 const String kImgVitals      = 'assets/vitals-button.png';
 const String kImgReports     = 'assets/reports-button.png';
 const String kImgAllAbout    = 'assets/all-about-dementia-button.png';
-const String kImgNavHome     = 'assets/Vectorhome.png';
-const String kImgNavSettings = 'assets/Vectorsettings.png';
 
 // =============================================================================
 //  CAREGIVER HOME PAGE
 // =============================================================================
-class CaregiverHomePage extends StatelessWidget {
+class CaregiverHomePage extends StatefulWidget {
   const CaregiverHomePage({super.key});
+
+  @override
+  State<CaregiverHomePage> createState() => _CaregiverHomePageState();
+}
+
+class _CaregiverHomePageState extends State<CaregiverHomePage> {
+  final _authService = AuthService();
+
+  String _caregiverName = '...';
+  String _patientName = '...';
+  String _patientId = 'patient_01'; // will be replaced with real ID
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNames();
+  }
+
+  Future<void> _loadNames() async {
+    final data = await _authService.getUserData();
+    if (data == null) return;
+
+    final caregiverName = data['name'] as String? ?? 'Caregiver';
+    final patientId = data['paired_patient_id'] as String?;
+
+    String patientName = 'Patient';
+    if (patientId != null && patientId.isNotEmpty) {
+      final patientData = await _authService.getUserById(patientId);
+      patientName = patientData?['name'] as String? ?? 'Patient';
+    }
+
+    setState(() {
+      _caregiverName = caregiverName;
+      _patientName = patientName;
+      _patientId = patientId ?? 'patient_01';
+      _loading = false;
+    });
+  }
 
   void _go(BuildContext context, Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
@@ -39,13 +78,13 @@ class CaregiverHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-        bottomNavigationBar: CaregiverBottomNav(
+      bottomNavigationBar: CaregiverBottomNav(
         onSettingsTap: () => Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-    ),
+          context,
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
         ),
-    body: SafeArea(
+      ),
+      body: SafeArea(
         top: false,
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
@@ -53,28 +92,31 @@ class CaregiverHomePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
 
-              // 1. HERO BLOB
-              const HeroBlob(),
+              // 1. HERO BLOB — shows real caregiver + patient names
+              HeroBlob(
+                caregiverName: _loading ? '...' : _caregiverName,
+                patientName: _loading ? '...' : _patientName,
+              ),
               const SizedBox(height: 30),
 
               // 2. SPY CALL | LOCATE | SNAP TRIGGER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: QuickActionRow(
-                  onSpyCall:     () {},  // TODO: wire when SpyCall page is ready
-                  onLocate:      () => _go(
+                  onSpyCall: () {},
+                  onLocate: () => _go(
                     context,
-                    const TrackerPage(
-                      patientId:   'patient_01',   // replace with real patient ID from auth
-                      patientName: 'Raj',          // replace with real patient name
+                    TrackerPage(
+                      patientId: _patientId,
+                      patientName: _patientName,
                     ),
                   ),
-                  onSnapTrigger: () {},  // TODO: wire when SnapTrigger page is ready
+                  onSnapTrigger: () {},
                 ),
               ),
               const SizedBox(height: 20),
 
-              // 3. VITALS BANNER  →  VitalsPage
+              // 3. VITALS BANNER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: VitalsBanner(
@@ -87,7 +129,7 @@ class CaregiverHomePage extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: BottomBlobRow(
-                  onReports:  () => _go(context, const ReportsPage()),
+                  onReports: () => _go(context, const ReportsPage()),
                   onAllAbout: () => _go(context, const AllAboutDementiaPage1()),
                 ),
               ),
@@ -102,10 +144,17 @@ class CaregiverHomePage extends StatelessWidget {
 }
 
 // =============================================================================
-//  1. HERO BLOB
+//  1. HERO BLOB — now accepts real names as parameters
 // =============================================================================
 class HeroBlob extends StatelessWidget {
-  const HeroBlob({super.key});
+  final String caregiverName;
+  final String patientName;
+
+  const HeroBlob({
+    super.key,
+    required this.caregiverName,
+    required this.patientName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -120,27 +169,31 @@ class HeroBlob extends StatelessWidget {
               Positioned.fill(
                 child: Image.asset(kImgHeroBlob, fit: BoxFit.fill),
               ),
-              const Column(
+              Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Hey Sasha,',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontFamily: 'MicrosoftSansSerifBold',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25,
-                      )),
-                  Text('Check up on Raj.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontFamily: 'MicrosoftSansSerifBold',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25,
-                      )),
+                  Text(
+                    'Hey $caregiverName,',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: kBg,
+                      fontFamily: 'MicrosoftSansSerifBold',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
+                  Text(
+                    'Check up on $patientName.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: kBg,
+                      fontFamily: 'MicrosoftSansSerifBold',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -168,8 +221,8 @@ class QuickActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double rowH    = 100;
-    const double sideH   = 80;
+    const double rowH   = 100;
+    const double sideH  = 80;
     const double locateW = 100;
     const double locateH = 100;
 
@@ -243,7 +296,8 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                        child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
+                        child:
+                        Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
                     const Text('SNAP\nTRIGGER',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -387,7 +441,3 @@ class BottomBlobRow extends StatelessWidget {
     );
   }
 }
-
-// =============================================================================
-//  5. BOTTOM NAV BAR
-// =============================================================================
