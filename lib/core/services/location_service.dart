@@ -4,41 +4,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// LocationService — Patient Side
-///
-/// ── BUGS FIXED ────────────────────────────────────────────────────────────
-///
-/// BUG 1 (Critical — silent write failure, root cause of stale caregiver map)
-///   All Firestore writes used .update() with dot-notation field paths.
-///   .update() throws "NOT_FOUND" if the top-level key ('liveLocation' or
-///   'safeZone') does not yet exist on the document — e.g. first launch,
-///   freshly created user doc, or after wiping Firestore during testing.
-///   The catch block silently swallowed the exception, so the caregiver's
-///   StreamBuilder always received null → patient marker never rendered.
-///   Fix: all writes now use .set(..., SetOptions(merge: true)).
-///
-/// BUG 2 (Reliability — Timer killed in background)
-///   Timer.periodic + getCurrentPosition() does not survive Android
-///   background process limits without an active foreground service.
-///   Fix: replaced with Geolocator.getPositionStream() which registers a
-///   real OS-level location subscription that keeps firing in background
-///   (given 'always' permission or a foreground service is active).
-///   Added distanceFilter:10 to suppress redundant writes when stationary.
-///
-/// BUG 3 (Correctness — background permission upgrade path was broken)
-///   The original code called requestPermission() twice to try to upgrade
-///   from whileInUse → always. Android ignores the second call silently.
-///   Fix: documented the correct path (openAppSettings()) and return true
-///   for whileInUse so foreground tracking still starts regardless.
-///
-/// BUG 4 (Testing — startTracking never called without auth)
-///   Added startTrackingForTesting() bypass for dev use with a hardcoded
-///   patientId. Must match the ID passed to TrackerPage(patientId:...).
-///
-/// BUG 5 (Performance — full Firestore GET on every GPS tick)
-///   _checkSafeZone() was doing a full document GET every position update
-///   to re-read the safe zone config. Fixed with an in-memory cache kept
-///   fresh via a real-time Firestore snapshot listener. Zero extra reads.
-/// ──────────────────────────────────────────────────────────────────────────
 
 class LocationService {
   // ─── Singleton ────────────────────────────────────────────────────────────
@@ -207,7 +172,7 @@ class LocationService {
         required bool isStale,
       }) async {
     try {
-      // FIX (BUG 1): .set(merge:true) creates 'liveLocation' if absent.
+      // .set(merge:true) creates 'liveLocation' if absent.
       // .update() throws NOT_FOUND on a missing key — that was the root
       // cause of the caregiver seeing no patient marker and stale timestamps.
       await _db.collection('users').doc(patientId).set(
@@ -306,7 +271,7 @@ class LocationService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // STEP 6 — Caregiver Read API (public interface unchanged)
+  // STEP 6 — Caregiver Read API
   // ──────────────────────────────────────────────────────────────────────────
 
   static Future<LocationSnapshot?> getPatientLocation(String patientId) async {

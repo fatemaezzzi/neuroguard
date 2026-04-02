@@ -44,7 +44,7 @@ class PermissionService {
       print('Camera: GRANTED');
       return true;
     } else if (status.isPermanentlyDenied) {
-      // ✅ Do NOT auto-open settings — let the user trigger this from the UI
+      // Do NOT auto-open settings — let the user trigger this from the UI
       print('Camera: PERMANENTLY DENIED (user must enable in Settings manually)');
     }
     return false;
@@ -53,7 +53,7 @@ class PermissionService {
   // --- LOCATION ---
   // Note: Background location must be requested AFTER foreground is granted
   static Future<bool> _requestLocationPermission() async {
-    // ✅ Check foreground first — skip if already granted
+    // Check foreground first — skip if already granted
     if (await Permission.location.isGranted) {
       print('Location (foreground): already GRANTED, skipping request');
 
@@ -63,7 +63,7 @@ class PermissionService {
         if (background.isGranted) {
           print('Location (background): GRANTED');
         } else if (background.isPermanentlyDenied) {
-          // ✅ Do NOT auto-open settings
+          // Do NOT auto-open settings
           print('Location (background): PERMANENTLY DENIED');
         }
       } else {
@@ -89,7 +89,7 @@ class PermissionService {
         print('Location (background): GRANTED');
         return true;
       } else if (background.isPermanentlyDenied) {
-        // ✅ Do NOT auto-open settings
+        // Do NOT auto-open settings
         print('Location (background): PERMANENTLY DENIED');
       }
     } else {

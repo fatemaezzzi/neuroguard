@@ -173,8 +173,6 @@ class _PatientHomeState extends State<PatientHome> {
 
   // ───────────────────────────────────────────────
   // UNEVEN 2 × 2 GRID
-  // LOCATION cell now has loading state + navigate-home logic.
-  // TAKE ME HOME cell has been removed as requested.
   // ───────────────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
@@ -367,7 +365,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FIX THE CLOCK  (unchanged)
+  // FIX THE CLOCK
   // ───────────────────────────────────────────────
   Widget _buildFixTheClockButton() {
     return GestureDetector(
@@ -430,7 +428,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // Generic grid cell builder  (unchanged)
+  // Generic grid cell builder
   // ───────────────────────────────────────────────
   Widget _gridCell({
     required double height,
@@ -480,7 +478,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // Toast helper  (unchanged)
+  // Toast helper
   // ───────────────────────────────────────────────
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
