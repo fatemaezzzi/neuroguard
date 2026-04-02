@@ -1,28 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:neuroguard/features/patient/cognitest_screen.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/patient/navigate_home_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
-
-void main() {
-  runApp(const NeuroGuardApp());
-}
-
-class NeuroGuardApp extends StatelessWidget {
-  const NeuroGuardApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NeuroGuard Patient',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-      ),
-      home: const PatientHome(),
-    );
-  }
-}
+import 'package:neuroguard/core/services/auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PatientHome
@@ -35,16 +17,55 @@ class PatientHome extends StatefulWidget {
 }
 
 class _PatientHomeState extends State<PatientHome> {
-  // Replace with your actual auth / session provider
-  static const String _patientId = 'patient_01';
+  final _authService = AuthService();
+
+  String _patientName = '...';
+  String _patientId = '';
 
   static const Color limeGreen  = Color(0xFFB5E800);
   static const Color purple     = Color(0xFF7B52D9);
   static const Color crimsonRed = Color(0xFFBB0000);
   static const Color darkBg     = Color(0xFF1A1A1A);
 
-  // Tracks whether the LOCATION button is waiting for GPS + Firestore
   bool _isLocating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPatientData();
+  }
+
+  Future<void> _loadPatientData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final data = await _authService.getUserData();
+    if (!mounted) return;
+
+    setState(() {
+      _patientName = data?['name'] as String? ?? 'Friend';
+      _patientId = uid;
+    });
+  }
+
+  // ── Get first name only for friendly greeting ──────────────────────────
+  String get _firstName {
+    final parts = _patientName.trim().split(' ');
+    return parts.isNotEmpty ? parts[0].toUpperCase() : _patientName.toUpperCase();
+  }
+
+  // ── Format today's date ────────────────────────────────────────────────
+  String get _todayDate {
+    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const months = [
+      'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+    ];
+    final now = DateTime.now();
+    final dayName = days[now.weekday - 1];
+    final monthName = months[now.month - 1];
+    return '$dayName, ${now.day} $monthName';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,12 +96,11 @@ class _PatientHomeState extends State<PatientHome> {
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
-              onHomeTap: () =>  Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PatientHome()),
+              onHomeTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PatientHome()),
               ),
             ),
-
             const SizedBox(height: 8),
           ],
         ),
@@ -89,7 +109,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // FLOWER HEADER  (unchanged)
+  // FLOWER HEADER — real name + real date
   // ───────────────────────────────────────────────
   Widget _buildFlowerHeader() {
     return SizedBox(
@@ -99,16 +119,17 @@ class _PatientHomeState extends State<PatientHome> {
         alignment: Alignment.center,
         children: [
           Positioned.fill(
-            child: Image.asset('assets/top-flower-blob.png', fit: BoxFit.fill),
+            child: Image.asset('assets/top-flower-blob.png',
+                fit: BoxFit.fill),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Good Morning, RAJ',
-                  style: TextStyle(
+                Text(
+                  'Good Morning, $_firstName',
+                  style: const TextStyle(
                     color: Colors.black,
                     fontSize: 24,
                     fontFamily: 'MicrosoftSansSerifBold',
@@ -118,7 +139,7 @@ class _PatientHomeState extends State<PatientHome> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'WED, 4 MARCH',
+                  _todayDate,
                   style: TextStyle(
                     color: Colors.black.withOpacity(0.65),
                     fontSize: 20,
@@ -136,7 +157,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // HELP ME  (unchanged)
+  // HELP ME
   // ───────────────────────────────────────────────
   Widget _buildHelpMeButton() {
     return GestureDetector(
@@ -149,7 +170,7 @@ class _PatientHomeState extends State<PatientHome> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: crimsonRed.withValues(alpha: 0.55),
+              color: crimsonRed.withOpacity(0.55),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
@@ -173,8 +194,6 @@ class _PatientHomeState extends State<PatientHome> {
 
   // ───────────────────────────────────────────────
   // UNEVEN 2 × 2 GRID
-  // LOCATION cell now has loading state + navigate-home logic.
-  // TAKE ME HOME cell has been removed as requested.
   // ───────────────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
@@ -186,7 +205,6 @@ class _PatientHomeState extends State<PatientHome> {
         Expanded(
           child: Column(
             children: [
-              // ─── LOCATION button (navigate home + notify caregiver) ───
               _buildLocationCell(),
               const SizedBox(height: gap),
               _gridCell(
@@ -235,7 +253,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // LOCATION cell — shows spinner while working
+  // LOCATION cell
   // ───────────────────────────────────────────────
   Widget _buildLocationCell() {
     return GestureDetector(
@@ -245,7 +263,6 @@ class _PatientHomeState extends State<PatientHome> {
         width: double.infinity,
         height: 140,
         decoration: BoxDecoration(
-          // Dims slightly while loading so the patient knows the tap registered
           color: _isLocating ? limeGreen.withOpacity(0.55) : limeGreen,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
@@ -287,7 +304,8 @@ class _PatientHomeState extends State<PatientHome> {
             : const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.location_on_rounded, color: Colors.black, size: 44),
+            Icon(Icons.location_on_rounded,
+                color: Colors.black, size: 44),
             SizedBox(height: 8),
             Text(
               'LOCATION',
@@ -305,17 +323,12 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // LOCATION button handler
-  // ───────────────────────────────────────────────
   Future<void> _handleLocationTap() async {
-    // Show loading briefly so patient knows tap registered
     setState(() => _isLocating = true);
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     setState(() => _isLocating = false);
 
-    // Open the in-app navigation map — no browser, no external app
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -325,49 +338,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // Error dialog — large text, easy to read
-  // ───────────────────────────────────────────────
-  void _showErrorDialog(String message) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Could Not Navigate',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
-          ),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 18,
-            height: 1.5,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'OK',
-              style: TextStyle(
-                color: Color(0xFFB5E800),
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────
-  // FIX THE CLOCK  (unchanged)
+  // FIX THE CLOCK
   // ───────────────────────────────────────────────
   Widget _buildFixTheClockButton() {
     return GestureDetector(
@@ -413,7 +384,7 @@ class _PatientHomeState extends State<PatientHome> {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.18),
+                  color: Colors.black.withOpacity(0.18),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -430,7 +401,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // Generic grid cell builder  (unchanged)
+  // Generic grid cell builder
   // ───────────────────────────────────────────────
   Widget _gridCell({
     required double height,
@@ -479,16 +450,14 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Toast helper  (unchanged)
-  // ───────────────────────────────────────────────
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: purple,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
       ),
     );

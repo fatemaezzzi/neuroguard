@@ -15,15 +15,40 @@ class _ReplayScrubberState extends State<ReplayScrubber> {
   double _sliderValue = 1.0;
 
   List<StrokePoint> get _visiblePoints {
-    final count = (widget.allPoints.length * _sliderValue).round();
-    return widget.allPoints.sublist(0, count.clamp(0, widget.allPoints.length));
+    if (widget.allPoints.isEmpty) return [];
+    final count =
+    (widget.allPoints.length * _sliderValue).round().clamp(0, widget.allPoints.length);
+    return widget.allPoints.sublist(0, count);
+  }
+
+  int get _strokeCount {
+    return widget.allPoints.where((p) => !p.isDown).length;
+  }
+
+  int get _visibleStrokeCount {
+    return _visiblePoints.where((p) => !p.isDown).length;
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.allPoints.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Center(
+          child: Text(
+            'No drawing data available',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: [
-        // Drawing shown up to the scrubber position
+        // ── Drawing canvas showing replay ─────────────────────────────
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -35,39 +60,100 @@ class _ReplayScrubberState extends State<ReplayScrubber> {
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Scrubber label
+        // ── Stroke counter ────────────────────────────────────────────
         Text(
-          'Drag to replay stroke by stroke',
-          style: TextStyle(
-            color: Colors.grey.shade500,
+          'Stroke $_visibleStrokeCount of $_strokeCount',
+          style: const TextStyle(
+            color: Color(0xFF7B4FD4),
+            fontWeight: FontWeight.bold,
             fontSize: 13,
           ),
         ),
+
         const SizedBox(height: 4),
 
-        // Slider
+        // ── Scrubber ──────────────────────────────────────────────────
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: const Color(0xFF7B4FD4),
             thumbColor: const Color(0xFF7B4FD4),
-            inactiveTrackColor: const Color(0xFF7B4FD4).withValues(alpha: 0.2),
+            inactiveTrackColor:
+            const Color(0xFF7B4FD4).withOpacity(0.2),
             overlayColor: const Color(0xFF7B4FD4).withOpacity(0.1),
+            trackHeight: 4,
           ),
           child: Slider(
             value: _sliderValue,
             min: 0.0,
             max: 1.0,
+            divisions: widget.allPoints.length.clamp(1, 500),
             onChanged: (val) => setState(() => _sliderValue = val),
           ),
         ),
 
-        Text(
-          '${(_sliderValue * 100).round()}% of drawing',
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(left: 16),
+              child: Text('Start',
+                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ),
+            Text(
+              '${(_sliderValue * 100).round()}%',
+              style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Text('End',
+                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ),
+          ],
         ),
+
+        const SizedBox(height: 4),
+
+        // ── Quick jump buttons ────────────────────────────────────────
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _jumpBtn('|◀', 0.0),
+            const SizedBox(width: 8),
+            _jumpBtn('◀◀', (_sliderValue - 0.1).clamp(0.0, 1.0)),
+            const SizedBox(width: 8),
+            _jumpBtn('▶▶', (_sliderValue + 0.1).clamp(0.0, 1.0)),
+            const SizedBox(width: 8),
+            _jumpBtn('▶|', 1.0),
+          ],
+        ),
+
+        const SizedBox(height: 8),
       ],
     );
   }
+
+  Widget _jumpBtn(String label, double value) => GestureDetector(
+    onTap: () => setState(() => _sliderValue = value),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7B4FD4).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: const Color(0xFF7B4FD4).withOpacity(0.3), width: 1),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+            color: Color(0xFF7B4FD4),
+            fontSize: 12,
+            fontWeight: FontWeight.bold),
+      ),
+    ),
+  );
 }

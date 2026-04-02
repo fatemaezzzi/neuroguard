@@ -37,12 +37,8 @@ class _DrawingScreenState extends State<DrawingScreen> {
 
     final avgTia = _service.calculateTimeInAir(_points);
     final score = _service.calculateScore(avgTia);
-
-    // Snapshot points BEFORE any async gap so we pass the full list
     final savedPoints = List<StrokePoint>.from(_points);
 
-    // saveSession now only awaits the fast metadata write (~200ms).
-    // Points are saved in background — does NOT block navigation.
     final sessionId = await _service.saveSession(
       patientId: widget.patientId,
       points: savedPoints,
@@ -53,12 +49,11 @@ class _DrawingScreenState extends State<DrawingScreen> {
 
     if (!mounted) return;
 
-    // Navigate immediately — no snackbar delay
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => ResultScreen(
-          points: savedPoints,  // pass the snapshot — always has strokes
+          points: savedPoints,
           avgTimeInAir: avgTia,
           score: score,
           patientId: widget.patientId,
@@ -115,13 +110,13 @@ class _DrawingScreenState extends State<DrawingScreen> {
 
       body: Column(
         children: [
+          // Instruction banner
           Container(
             width: double.infinity,
             color: const Color(0xFFCCFF00),
-            padding:
-            const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
             child: const Text(
-              'Draw the clock hands to show 10:10.\nAdd the numbers around the circle.',
+              'Draw a clock showing 10:10.\nDraw the circle, numbers, and hands.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -130,6 +125,8 @@ class _DrawingScreenState extends State<DrawingScreen> {
               ),
             ),
           ),
+
+          // Drawing area
           Expanded(
             child: DrawingCanvas(
               points: _points,
@@ -148,28 +145,3 @@ class _DrawingScreenState extends State<DrawingScreen> {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

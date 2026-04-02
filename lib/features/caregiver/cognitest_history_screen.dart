@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
@@ -23,7 +24,7 @@ class CogniTestHistoryScreen extends StatefulWidget {
 }
 
 class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
-  static const String _patientId = 'patient_01';
+  final String _patientId = FirebaseAuth.instance.currentUser?.uid ?? 'patient_01';
 
   final _service = CogniTestService();
   bool _showMonthly = false;
