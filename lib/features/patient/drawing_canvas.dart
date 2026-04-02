@@ -18,37 +18,69 @@ class DrawingCanvas extends StatefulWidget {
 }
 
 class _DrawingCanvasState extends State<DrawingCanvas> {
+  // ValueNotifier triggers ONLY the CustomPaint to repaint —
+  // not the entire widget tree. This is the key fix for lag.
+  late final ValueNotifier<List<StrokePoint>> _pointsNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _pointsNotifier = ValueNotifier(List.from(widget.points));
+  }
+
+  @override
+  void didUpdateWidget(DrawingCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync notifier when points change from outside (replay scrubber)
+    if (widget.points != oldWidget.points) {
+      _pointsNotifier.value = List.from(widget.points);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pointsNotifier.dispose();
+    super.dispose();
+  }
+
   void _handlePointerDown(PointerDownEvent e) {
     if (widget.readOnly) return;
-    widget.onPoint(StrokePoint(
+    final point = StrokePoint(
       x: e.localPosition.dx,
       y: e.localPosition.dy,
       pressure: e.pressure,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       isDown: true,
-    ));
+    );
+    widget.onPoint(point);
+    // Update notifier directly — no setState, no widget tree rebuild
+    _pointsNotifier.value = [..._pointsNotifier.value, point];
   }
 
   void _handlePointerMove(PointerMoveEvent e) {
     if (widget.readOnly) return;
-    widget.onPoint(StrokePoint(
+    final point = StrokePoint(
       x: e.localPosition.dx,
       y: e.localPosition.dy,
       pressure: e.pressure,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       isDown: true,
-    ));
+    );
+    widget.onPoint(point);
+    _pointsNotifier.value = [..._pointsNotifier.value, point];
   }
 
   void _handlePointerUp(PointerUpEvent e) {
     if (widget.readOnly) return;
-    widget.onPoint(StrokePoint(
+    final point = StrokePoint(
       x: e.localPosition.dx,
       y: e.localPosition.dy,
       pressure: 0,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       isDown: false,
-    ));
+    );
+    widget.onPoint(point);
+    _pointsNotifier.value = [..._pointsNotifier.value, point];
   }
 
   @override
@@ -59,12 +91,21 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       onPointerUp: _handlePointerUp,
       child: Container(
         color: Colors.white,
-        child: CustomPaint(
-          painter: _ClockCanvasPainter(
-            points: widget.points,
-            showCursor: !widget.readOnly,
+        // RepaintBoundary isolates repaints to just the canvas —
+        // the rest of the screen (app bar, banner) never repaints
+        child: RepaintBoundary(
+          child: ValueListenableBuilder<List<StrokePoint>>(
+            valueListenable: _pointsNotifier,
+            builder: (context, points, _) {
+              return CustomPaint(
+                painter: _ClockCanvasPainter(
+                  points: points,
+                  showCursor: !widget.readOnly,
+                ),
+                child: const SizedBox.expand(),
+              );
+            },
           ),
-          child: const SizedBox.expand(),
         ),
       ),
     );
@@ -79,7 +120,8 @@ class _ClockCanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // ── Stroke paint ────────────────────────────────────────────────
+    if (points.isEmpty) return;
+
     final strokePaint = Paint()
       ..color = const Color(0xFF1B1464)
       ..strokeWidth = 4.0
@@ -87,7 +129,6 @@ class _ClockCanvasPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
-    // ── Draw all strokes ────────────────────────────────────────────
     for (int i = 0; i < points.length - 1; i++) {
       final curr = points[i];
       final next = points[i + 1];
@@ -100,8 +141,8 @@ class _ClockCanvasPainter extends CustomPainter {
       }
     }
 
-    // ── Pen cursor dot (only when drawing, not in replay) ──────────
-    if (showCursor && points.isNotEmpty && points.last.isDown) {
+    // Cursor dot — only when actively drawing, not in replay
+    if (showCursor && points.last.isDown) {
       final last = points.last;
       canvas.drawCircle(
         Offset(last.x, last.y),

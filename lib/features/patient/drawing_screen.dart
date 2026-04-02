@@ -19,7 +19,10 @@ class _DrawingScreenState extends State<DrawingScreen> {
   bool _isSaving = false;
 
   void _addPoint(StrokePoint point) {
-    setState(() => _points.add(point));
+    // NO setState here — DrawingCanvas handles its own repaints
+    // via ValueNotifier. Adding setState here was causing the entire
+    // screen (AppBar, banner, FAB) to rebuild on every touch move event.
+    _points.add(point);
   }
 
   Future<void> _finishTest() async {
@@ -114,7 +117,8 @@ class _DrawingScreenState extends State<DrawingScreen> {
           Container(
             width: double.infinity,
             color: const Color(0xFFCCFF00),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            padding:
+            const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
             child: const Text(
               'Draw a clock showing 10:10.\nDraw the circle, numbers, and hands.',
               textAlign: TextAlign.center,
@@ -125,8 +129,7 @@ class _DrawingScreenState extends State<DrawingScreen> {
               ),
             ),
           ),
-
-          // Drawing area
+          // Drawing area — fills remaining space
           Expanded(
             child: DrawingCanvas(
               points: _points,
@@ -137,7 +140,11 @@ class _DrawingScreenState extends State<DrawingScreen> {
       ),
 
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => setState(() => _points.clear()),
+        onPressed: () {
+          _points.clear();
+          // Need setState here only to reset the canvas
+          setState(() {});
+        },
         backgroundColor: Colors.red.shade400,
         icon: const Icon(Icons.refresh, color: Colors.white),
         label: const Text('Clear', style: TextStyle(color: Colors.white)),
