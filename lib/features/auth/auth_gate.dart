@@ -1,63 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:neuroguard/core/providers/auth_providers.dart';
 import 'package:neuroguard/features/auth/login_screen.dart';
 import 'package:neuroguard/features/auth/patient_scan_screen.dart';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
 import 'package:neuroguard/features/patient/patient_home.dart';
 
-// The root widget that decides what screen to show.
-// 1. Not logged in → LoginScreen
-// 2. Logged in as patient, not paired → PatientScanScreen (force pairing)
-// 3. Logged in as patient, paired → PatientHome
-// 4. Logged in as caregiver → CaregiverHome
-class AuthGate extends StatelessWidget {
+class AuthGate extends ConsumerWidget {        // ← was StatelessWidget
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        // Still checking auth state
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const _LoadingScreen();
-        }
+  Widget build(BuildContext context, WidgetRef ref) {   // ← WidgetRef added
+    final authState = ref.watch(authStateProvider);
+    final userDataAsync = ref.watch(userDataProvider);
 
-        // Not logged in
-        if (!authSnapshot.hasData || authSnapshot.data == null) {
-          return const LoginScreen();
-        }
+    return authState.when(
+      loading: () => const _LoadingScreen(),
+      error: (_, __) => const LoginScreen(),
+      data: (user) {
+        if (user == null) return const LoginScreen();
 
-        // Logged in — check role and pairing status
-        return FutureBuilder<Map<String, dynamic>?>(
-          future: AuthService().getUserData(),
-          builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
-              return const _LoadingScreen();
-            }
-
-            final data = userSnapshot.data;
+        return userDataAsync.when(
+          loading: () => const _LoadingScreen(),
+          error: (_, __) => const LoginScreen(),
+          data: (data) {
             if (data == null) {
-              // User doc missing — sign out and go to login
               FirebaseAuth.instance.signOut();
               return const LoginScreen();
             }
 
             final role = data['role'] as String? ?? 'patient';
             final isPaired = data['is_paired'] == true;
-            final uid = FirebaseAuth.instance.currentUser!.uid;
+            final uid = user.uid;
 
-            if (role == 'caregiver') {
-              return const CaregiverHomePage();
-            }
-
-            // Patient — check if paired
-            if (!isPaired) {
-              // Force them to pair before accessing the app
-              return PatientScanScreen(patientId: uid);
-            }
-
+            if (role == 'caregiver') return const CaregiverHomePage();
+            if (!isPaired) return PatientScanScreen(patientId: uid);
             return PatientHome(patientId: uid);
           },
         );
@@ -66,6 +44,7 @@ class AuthGate extends StatelessWidget {
   }
 }
 
+// _LoadingScreen stays exactly the same — no changes needed
 class _LoadingScreen extends StatelessWidget {
   const _LoadingScreen();
 
