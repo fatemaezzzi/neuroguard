@@ -125,7 +125,7 @@ class _PatientScanScreenState extends State<PatientScanScreen> {
                   Navigator.of(context).pop();
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (_) => const PatientHome()),
+                    MaterialPageRoute(builder: (_) => const PatientHome(patientId: '',)),
                         (route) => false,
                   );
                 },
@@ -255,7 +255,7 @@ class _PatientScanScreenState extends State<PatientScanScreen> {
             TextButton(
               onPressed: () => Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const PatientHome()),
+                MaterialPageRoute(builder: (_) => const PatientHome(patientId: '',)),
                     (route) => false,
               ),
               child: const Text(

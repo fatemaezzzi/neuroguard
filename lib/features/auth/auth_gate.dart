@@ -49,7 +49,7 @@ class AuthGate extends StatelessWidget {
             final uid = FirebaseAuth.instance.currentUser!.uid;
 
             if (role == 'caregiver') {
-            return const CaregiverHomePage();
+              return const CaregiverHomePage();
             }
 
             // Patient — check if paired
@@ -58,7 +58,7 @@ class AuthGate extends StatelessWidget {
               return PatientScanScreen(patientId: uid);
             }
 
-            return const PatientHome();
+            return PatientHome(patientId: uid);
           },
         );
       },

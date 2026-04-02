@@ -40,7 +40,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
 
   String _caregiverName = '...';
   String _patientName = '...';
-  String _patientId = 'patient_01'; // will be replaced with real ID
+  String _patientId = ''; // populated by _loadNames() from Firestore
   bool _loading = true;
 
   @override
@@ -65,7 +65,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
     setState(() {
       _caregiverName = caregiverName;
       _patientName = patientName;
-      _patientId = patientId ?? 'patient_01';
+      _patientId = patientId ?? '';
       _loading = false;
     });
   }
@@ -104,7 +104,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: QuickActionRow(
                   onSpyCall: () {},
-                  onLocate: () => _go(
+                  onLocate: _loading ? () {} : () => _go(
                     context,
                     TrackerPage(
                       patientId: _patientId,
