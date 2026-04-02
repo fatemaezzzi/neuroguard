@@ -18,7 +18,6 @@ class DrawingCanvas extends StatefulWidget {
 }
 
 class _DrawingCanvasState extends State<DrawingCanvas> {
-  // ── Touch handlers ─────────────────────────────────────────────────
   void _handlePointerDown(PointerDownEvent e) {
     if (widget.readOnly) return;
     widget.onPoint(StrokePoint(
@@ -59,13 +58,12 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       onPointerMove: _handlePointerMove,
       onPointerUp: _handlePointerUp,
       child: Container(
-        // BUG FIX 1: white background set on Container OUTSIDE CustomPaint
-        // Previously Container(color: white) was the CHILD of CustomPaint
-        // which rendered ON TOP of the painter, hiding all strokes.
         color: Colors.white,
         child: CustomPaint(
-          painter: _ClockCanvasPainter(widget.points),
-          // SizedBox.expand forces the painter to fill all available space
+          painter: _ClockCanvasPainter(
+            points: widget.points,
+            showCursor: !widget.readOnly,
+          ),
           child: const SizedBox.expand(),
         ),
       ),
@@ -73,44 +71,23 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 }
 
-// ── Painter ────────────────────────────────────────────────────────────────
 class _ClockCanvasPainter extends CustomPainter {
   final List<StrokePoint> points;
-  _ClockCanvasPainter(this.points);
+  final bool showCursor;
+
+  _ClockCanvasPainter({required this.points, required this.showCursor});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius =
-        (size.width < size.height ? size.width : size.height) / 2 - 16;
-
-    // ── Clock circle ──────────────────────────────────────────────────
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..color = Colors.black
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4.0,
-    );
-
-    // Center dot
-    canvas.drawCircle(
-      center,
-      6,
-      Paint()
-        ..color = Colors.black
-        ..style = PaintingStyle.fill,
-    );
-
-    // ── Pen strokes (dark blue so clearly visible on white) ───────────
+    // ── Stroke paint ────────────────────────────────────────────────
     final strokePaint = Paint()
-      ..color = const Color(0xFF1B1464) // dark navy — very visible on white
+      ..color = const Color(0xFF1B1464)
       ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
+    // ── Draw all strokes ────────────────────────────────────────────
     for (int i = 0; i < points.length - 1; i++) {
       final curr = points[i];
       final next = points[i + 1];
@@ -123,8 +100,8 @@ class _ClockCanvasPainter extends CustomPainter {
       }
     }
 
-    // ── Pen cursor dot at last touch position ─────────────────────────
-    if (points.isNotEmpty && points.last.isDown) {
+    // ── Pen cursor dot (only when drawing, not in replay) ──────────
+    if (showCursor && points.isNotEmpty && points.last.isDown) {
       final last = points.last;
       canvas.drawCircle(
         Offset(last.x, last.y),
@@ -145,5 +122,6 @@ class _ClockCanvasPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ClockCanvasPainter old) => true;
+  bool shouldRepaint(_ClockCanvasPainter old) =>
+      old.points != points || old.showCursor != showCursor;
 }
