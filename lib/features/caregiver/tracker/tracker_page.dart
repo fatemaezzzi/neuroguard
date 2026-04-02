@@ -570,6 +570,12 @@ class _TrackerPageState extends State<TrackerPage>
                   onTap: _centreOnHome,
                   color: _safeGreen,
                 ),
+                const SizedBox(width: 8),
+                _mapIconButton(
+                  icon:  Icons.edit_location_alt_rounded,
+                  onTap: _openSafeZoneEditor,
+                  color: _warningAmber,
+                ),
               ],
             ),
           ),
@@ -962,10 +968,16 @@ class _TrackerPageState extends State<TrackerPage>
   }
 
   void _openSafeZoneEditor() {
+    final patientLatLng = _patientLocation != null
+        ? LatLng(_patientLocation!.latitude, _patientLocation!.longitude)
+        : null;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SafeZoneEditorPage(patientId: widget.patientId),
+        builder: (_) => SafeZoneEditorPage(
+          patientId:     widget.patientId,
+          initialCenter: patientLatLng,
+        ),
       ),
     );
   }
@@ -1000,7 +1012,14 @@ class _TrackerPageState extends State<TrackerPage>
 
 class SafeZoneEditorPage extends StatefulWidget {
   final String patientId;
-  const SafeZoneEditorPage({Key? key, required this.patientId}) : super(key: key);
+  /// If provided, the map opens centred here (patient's live location).
+  /// Falls back to saved zone centre, then Mumbai if neither is available.
+  final LatLng? initialCenter;
+  const SafeZoneEditorPage({
+    Key? key,
+    required this.patientId,
+    this.initialCenter,
+  }) : super(key: key);
 
   @override
   State<SafeZoneEditorPage> createState() => _SafeZoneEditorPageState();
@@ -1048,7 +1067,9 @@ class _SafeZoneEditorPageState extends State<SafeZoneEditorPage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _centerPoint ?? const LatLng(19.0760, 72.8777),
+              initialCenter: _centerPoint
+                  ?? widget.initialCenter
+                  ?? const LatLng(19.0760, 72.8777),
               initialZoom:   15.0,
               onTap: (_, latLng) => setState(() => _centerPoint = latLng),
             ),

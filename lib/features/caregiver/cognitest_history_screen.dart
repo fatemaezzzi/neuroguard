@@ -73,7 +73,7 @@ class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
     if (widget.callerRole == 'patient') {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const PatientHome()),
+        MaterialPageRoute(builder: (_) => const PatientHome(patientId: '',)),
             (route) => false,
       );
     } else {

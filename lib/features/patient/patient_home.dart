@@ -5,12 +5,17 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/patient/navigate_home_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:neuroguard/core/services/location_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PatientHome
 // ─────────────────────────────────────────────────────────────────────────────
 class PatientHome extends StatefulWidget {
-  const PatientHome({super.key});
+  /// Optional — legacy callers pass this in. We always prefer the
+  /// FirebaseAuth uid fetched at runtime, but fall back to this if needed.
+  final String? patientId;
+
+  const PatientHome({super.key, this.patientId});
 
   @override
   State<PatientHome> createState() => _PatientHomeState();
@@ -27,25 +32,48 @@ class _PatientHomeState extends State<PatientHome> {
   static const Color crimsonRed = Color(0xFFBB0000);
   static const Color darkBg     = Color(0xFF1A1A1A);
 
+  // Tracks whether the LOCATION button is waiting for GPS + Firestore
   bool _isLocating = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPatientData();
+    _checkAuthAndLoad();
   }
 
-  Future<void> _loadPatientData() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+  // ── Auth guard + data load ─────────────────────────────────────────────
+  Future<void> _checkAuthAndLoad() async {
+    final user = FirebaseAuth.instance.currentUser;
 
-    final data = await _authService.getUserData();
-    if (!mounted) return;
+    // Prefer Firebase uid; fall back to the patientId passed by the caller.
+    final uid = user?.uid ?? widget.patientId;
+    if (uid == null || uid.isEmpty) {
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+      return;
+    }
 
-    setState(() {
-      _patientName = data?['name'] as String? ?? 'Friend';
-      _patientId = uid;
-    });
+    try {
+      final data = await _authService.getUserData();
+      if (!mounted) return;
+      setState(() {
+        _patientName = data?['name'] as String? ?? 'Friend';
+        _patientId   = uid;
+      });
+      // Start live GPS tracking now that we have the confirmed real uid.
+      // This writes liveLocation to users/{uid} in Firestore so the
+      // caregiver's TrackerPage can display the patient marker.
+      LocationService().startTracking(patientId: uid);
+    } catch (e) {
+      // getUserData failed — still show the screen with fallback name
+      if (!mounted) return;
+      setState(() {
+        _patientName = 'Friend';
+        _patientId   = uid;
+      });
+      LocationService().startTracking(patientId: uid);
+      debugPrint('PatientHome: failed to load user data — $e');
+    }
   }
 
   // ── Get first name only for friendly greeting ──────────────────────────
@@ -54,7 +82,7 @@ class _PatientHomeState extends State<PatientHome> {
     return parts.isNotEmpty ? parts[0].toUpperCase() : _patientName.toUpperCase();
   }
 
-  // ── Format today's date ────────────────────────────────────────────────
+  // ── Format today's date (dynamic) ─────────────────────────────────────
   String get _todayDate {
     const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
     const months = [
@@ -62,9 +90,17 @@ class _PatientHomeState extends State<PatientHome> {
       'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
     ];
     final now = DateTime.now();
-    final dayName = days[now.weekday - 1];
+    final dayName   = days[now.weekday - 1];
     final monthName = months[now.month - 1];
     return '$dayName, ${now.day} $monthName';
+  }
+
+  // ── Greeting changes by time of day ───────────────────────────────────
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   }
 
   @override
@@ -90,16 +126,14 @@ class _PatientHomeState extends State<PatientHome> {
                 ),
               ),
             ),
-            // ── Bottom Nav ───────────────────────────────────────────
+            // ── Bottom Nav ───────────────────────────────────────────────
             PatientBottomNav(
               onSettingsTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
-              onHomeTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PatientHome()),
-              ),
+              // FIX: pop back to root instead of pushing a duplicate PatientHome
+              onHomeTap: () => Navigator.of(context).popUntil((r) => r.isFirst),
             ),
             const SizedBox(height: 8),
           ],
@@ -119,8 +153,10 @@ class _PatientHomeState extends State<PatientHome> {
         alignment: Alignment.center,
         children: [
           Positioned.fill(
-            child: Image.asset('assets/top-flower-blob.png',
-                fit: BoxFit.fill),
+            child: Image.asset(
+              'assets/top-flower-blob.png',
+              fit: BoxFit.fill,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -128,7 +164,7 @@ class _PatientHomeState extends State<PatientHome> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Good Morning, $_firstName',
+                  '$_greeting, $_firstName',
                   style: const TextStyle(
                     color: Colors.black,
                     fontSize: 24,
@@ -141,7 +177,7 @@ class _PatientHomeState extends State<PatientHome> {
                 Text(
                   _todayDate,
                   style: TextStyle(
-                    color: Colors.black.withOpacity(0.65),
+                    color: Colors.black.withValues(alpha: 0.65),
                     fontSize: 20,
                     fontFamily: 'MicrosoftSansSerifBold',
                     fontWeight: FontWeight.w900,
@@ -157,11 +193,11 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   // ───────────────────────────────────────────────
-  // HELP ME
+  // HELP ME — confirmation dialog before alerting
   // ───────────────────────────────────────────────
   Widget _buildHelpMeButton() {
     return GestureDetector(
-      onTap: () => _toast('Emergency alert sent to caregivers!'),
+      onTap: _confirmHelpMe,
       child: Container(
         width: double.infinity,
         height: 100,
@@ -170,7 +206,7 @@ class _PatientHomeState extends State<PatientHome> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: crimsonRed.withOpacity(0.55),
+              color: crimsonRed.withValues(alpha: 0.55),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
@@ -190,6 +226,38 @@ class _PatientHomeState extends State<PatientHome> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmHelpMe() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Send Emergency Alert?',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will immediately alert your caregivers and family.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('SEND', style: TextStyle(color: crimsonRed, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      // TODO: trigger your actual emergency alert service here
+      _toast('Emergency alert sent to caregivers!');
+    }
   }
 
   // ───────────────────────────────────────────────
@@ -263,11 +331,13 @@ class _PatientHomeState extends State<PatientHome> {
         width: double.infinity,
         height: 140,
         decoration: BoxDecoration(
-          color: _isLocating ? limeGreen.withOpacity(0.55) : limeGreen,
+          color: _isLocating
+              ? limeGreen.withValues(alpha: 0.55)
+              : limeGreen,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: limeGreen.withOpacity(0.35),
+              color: limeGreen.withValues(alpha: 0.35),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -304,8 +374,7 @@ class _PatientHomeState extends State<PatientHome> {
             : const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.location_on_rounded,
-                color: Colors.black, size: 44),
+            Icon(Icons.location_on_rounded, color: Colors.black, size: 44),
             SizedBox(height: 8),
             Text(
               'LOCATION',
@@ -324,6 +393,11 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   Future<void> _handleLocationTap() async {
+    if (_patientId.isEmpty) {
+      _toast('Please wait, loading your profile…');
+      return;
+    }
+
     setState(() => _isLocating = true);
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
@@ -354,7 +428,7 @@ class _PatientHomeState extends State<PatientHome> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: limeGreen.withOpacity(0.45),
+              color: limeGreen.withValues(alpha: 0.45),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -384,7 +458,7 @@ class _PatientHomeState extends State<PatientHome> {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -422,7 +496,7 @@ class _PatientHomeState extends State<PatientHome> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.35),
+              color: color.withValues(alpha: 0.35),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -450,14 +524,16 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
+  // ───────────────────────────────────────────────
+  // Toast helper
+  // ───────────────────────────────────────────────
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: purple,
         behavior: SnackBarBehavior.floating,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
       ),
     );
