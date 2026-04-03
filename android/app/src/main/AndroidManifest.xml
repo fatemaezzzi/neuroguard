@@ -1,34 +1,84 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-        <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>
-        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-        <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-        <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-        <!-- MICROPHONE (for Spy Call / auto-answer audio) -->
-        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- ========================= -->
+    <!-- GENERAL PERMISSIONS -->
+    <!-- ========================= -->
 
-        <!-- CAMERA (for passive remote snapshot) -->
-        <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Allows use of high-frequency sensor data -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 
-        <!-- LOCATION (for geo-fencing) -->
-        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-        <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- Required for running foreground services -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
-        <!-- CALL (for auto-answer spy call) -->
-        <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
-        <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Required to show notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-        <!-- POCKET CHECK (for implementing the pocket check mode in Flutter-->
-        <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Keeps CPU awake for background operations -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Allows app to restart after device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ========================= -->
+    <!-- LOCATION PERMISSIONS -->
+    <!-- ========================= -->
+
+    <!-- Precise location (GPS) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Approximate location (Network) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Background location access (required for geofencing) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- ========================= -->
+    <!-- AUDIO & CAMERA PERMISSIONS -->
+    <!-- ========================= -->
+
+    <!-- Microphone access (calls, audio recording) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Camera access (video calls, snapshots) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Modify device audio settings -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- ========================= -->
+    <!-- CONNECTIVITY PERMISSIONS -->
+    <!-- ========================= -->
+
+    <!-- Check network connectivity -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Bluetooth access (for audio routing, devices) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+
+    <!-- ========================= -->
+    <!-- CALL / PHONE PERMISSIONS -->
+    <!-- ========================= -->
+
+    <!-- Answer incoming phone calls -->
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- Read phone state (call status, etc.) -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!-- ========================= -->
+    <!-- APPLICATION -->
+    <!-- ========================= -->
 
     <application
-        android:label="neuroguard"
         android:name="${applicationName}"
+        android:label="neuroguard"
         android:icon="@mipmap/ic_launcher">
 
+        <!-- ========================= -->
+        <!-- MAIN ACTIVITY -->
+        <!-- ========================= -->
         <activity
+            android:showOnLockScreen="true"
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
@@ -39,35 +89,50 @@
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="true">
 
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+            <!-- Launcher Intent -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Flutter normal theme -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
         </activity>
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+
+        <!-- ========================= -->
+        <!-- BACKGROUND SERVICE -->
+        <!-- ========================= -->
+
+        <!-- Flutter background service (audio + camera use) -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="microphone|camera"
+            android:exported="false" />
+
+        <!-- ========================= -->
+        <!-- FLUTTER CONFIG -->
+        <!-- ========================= -->
+
+        <!-- Required for Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- ========================= -->
+    <!-- PACKAGE VISIBILITY (Android 11+) -->
+    <!-- ========================= -->
+
     <queries>
+        <!-- Allows text processing intents (used by Flutter plugins) -->
         <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
         </intent>
     </queries>
+
 </manifest>

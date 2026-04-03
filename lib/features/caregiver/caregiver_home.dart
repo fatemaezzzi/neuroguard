@@ -6,6 +6,7 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
+import 'spy_call_page.dart';
 
 // =============================================================================
 //  COLOUR TOKENS
@@ -39,9 +40,9 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
   final _authService = AuthService();
 
   String _caregiverName = '...';
-  String _patientName = '...';
-  String _patientId = ''; // populated by _loadNames() from Firestore
-  bool _loading = true;
+  String _patientName   = '...';
+  String _patientId     = '';
+  bool   _loading       = true;
 
   @override
   void initState() {
@@ -54,7 +55,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
     if (data == null) return;
 
     final caregiverName = data['name'] as String? ?? 'Caregiver';
-    final patientId = data['paired_patient_id'] as String?;
+    final patientId     = data['paired_patient_id'] as String?;
 
     String patientName = 'Patient';
     if (patientId != null && patientId.isNotEmpty) {
@@ -64,9 +65,9 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
 
     setState(() {
       _caregiverName = caregiverName;
-      _patientName = patientName;
-      _patientId = patientId ?? '';
-      _loading = false;
+      _patientName   = patientName;
+      _patientId     = patientId ?? '';
+      _loading       = false;
     });
   }
 
@@ -92,10 +93,10 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
 
-              // 1. HERO BLOB — shows real caregiver + patient names
+              // 1. HERO BLOB
               HeroBlob(
                 caregiverName: _loading ? '...' : _caregiverName,
-                patientName: _loading ? '...' : _patientName,
+                patientName:   _loading ? '...' : _patientName,
               ),
               const SizedBox(height: 30),
 
@@ -103,11 +104,23 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: QuickActionRow(
-                  onSpyCall: () {},
-                  onLocate: _loading ? () {} : () => _go(
+                  patientId:   _patientId,
+                  caregiverId: _authService.currentUserId ?? '',
+                  onSpyCall: _loading
+                      ? () {}
+                      : () => _go(
+                    context,
+                    SpyCallPage(
+                      patientId:   _patientId,
+                      caregiverId: _authService.currentUserId ?? '',
+                    ),
+                  ),
+                  onLocate: _loading
+                      ? () {}
+                      : () => _go(
                     context,
                     TrackerPage(
-                      patientId: _patientId,
+                      patientId:   _patientId,
                       patientName: _patientName,
                     ),
                   ),
@@ -129,7 +142,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: BottomBlobRow(
-                  onReports: () => _go(context, const ReportsPage()),
+                  onReports:  () => _go(context, const ReportsPage()),
                   onAllAbout: () => _go(context, const AllAboutDementiaPage1()),
                 ),
               ),
@@ -144,7 +157,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
 }
 
 // =============================================================================
-//  1. HERO BLOB — now accepts real names as parameters
+//  1. HERO BLOB
 // =============================================================================
 class HeroBlob extends StatelessWidget {
   final String caregiverName;
@@ -211,12 +224,16 @@ class QuickActionRow extends StatelessWidget {
   final VoidCallback onSpyCall;
   final VoidCallback onLocate;
   final VoidCallback onSnapTrigger;
+  final String patientId;
+  final String caregiverId;
 
   const QuickActionRow({
     super.key,
     required this.onSpyCall,
     required this.onLocate,
     required this.onSnapTrigger,
+    required this.patientId,
+    required this.caregiverId,
   });
 
   @override
@@ -242,16 +259,19 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                        child: Image.asset(kImgSpyCall, fit: BoxFit.fill)),
-                    const Text('SPY\nCALL',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: kBg,
-                          fontFamily: 'Roboto',
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          height: 1.35,
-                        )),
+                      child: Image.asset(kImgSpyCall, fit: BoxFit.fill),
+                    ),
+                    const Text(
+                      'SPY\nCALL',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontFamily: 'Roboto',
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        height: 1.35,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -269,16 +289,22 @@ class QuickActionRow extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Image.asset(kImgLocate,
-                      width: locateW, height: locateH, fit: BoxFit.contain),
-                  const Text('LOCATE',
-                      style: TextStyle(
-                        color: kWhite,
-                        fontFamily: 'Roboto',
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                      )),
+                  Image.asset(
+                    kImgLocate,
+                    width: locateW,
+                    height: locateH,
+                    fit: BoxFit.contain,
+                  ),
+                  const Text(
+                    'LOCATE',
+                    style: TextStyle(
+                      color: kWhite,
+                      fontFamily: 'Roboto',
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -296,17 +322,19 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                        child:
-                        Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
-                    const Text('SNAP\nTRIGGER',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: kBg,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          fontFamily: 'Roboto',
-                          height: 1.35,
-                        )),
+                      child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill),
+                    ),
+                    const Text(
+                      'SNAP\nTRIGGER',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: kBg,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Roboto',
+                        height: 1.35,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -335,18 +363,19 @@ class VitalsBanner extends StatelessWidget {
         child: Stack(
           alignment: Alignment.centerLeft,
           children: [
-            Image.asset(kImgVitals,
-                width: double.infinity, fit: BoxFit.fitWidth),
+            Image.asset(kImgVitals, width: double.infinity, fit: BoxFit.fitWidth),
             const Padding(
               padding: EdgeInsets.only(left: 20),
-              child: Text('VITALS',
-                  style: TextStyle(
-                    color: kWhite,
-                    fontSize: 26,
-                    fontFamily: 'MicrosoftSansSerifBold',
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2.5,
-                  )),
+              child: Text(
+                'VITALS',
+                style: TextStyle(
+                  color: kWhite,
+                  fontSize: 26,
+                  fontFamily: 'MicrosoftSansSerifBold',
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.5,
+                ),
+              ),
             ),
           ],
         ),
@@ -389,18 +418,22 @@ class BottomBlobRow extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(kImgReports,
-                          width: blobSize,
-                          height: blobSize,
-                          fit: BoxFit.contain),
-                      const Text('REPORTS',
-                          style: TextStyle(
-                            color: kBg,
-                            fontSize: 26,
-                            fontFamily: 'MicrosoftSansSerifBold',
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                          )),
+                      Image.asset(
+                        kImgReports,
+                        width: blobSize,
+                        height: blobSize,
+                        fit: BoxFit.contain,
+                      ),
+                      const Text(
+                        'REPORTS',
+                        style: TextStyle(
+                          color: kBg,
+                          fontSize: 26,
+                          fontFamily: 'MicrosoftSansSerifBold',
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -415,20 +448,24 @@ class BottomBlobRow extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(kImgAllAbout,
-                          width: blobSize,
-                          height: blobSize,
-                          fit: BoxFit.contain),
-                      const Text('ALL\nABOUT\nDEMENTIA',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: kWhite,
-                            fontSize: 26,
-                            fontFamily: 'MicrosoftSansSerifBold',
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.4,
-                            height: 1.4,
-                          )),
+                      Image.asset(
+                        kImgAllAbout,
+                        width: blobSize,
+                        height: blobSize,
+                        fit: BoxFit.contain,
+                      ),
+                      const Text(
+                        'ALL\nABOUT\nDEMENTIA',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kWhite,
+                          fontSize: 26,
+                          fontFamily: 'MicrosoftSansSerifBold',
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.4,
+                          height: 1.4,
+                        ),
+                      ),
                     ],
                   ),
                 ),

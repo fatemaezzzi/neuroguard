@@ -63,6 +63,10 @@ dependencies:
   mobile_scanner: ^5.0.0
   flutter_lints: ^5.0.0
 
+  #Zego
+  zego_uikit_prebuilt_call: ^4.17.1
+  zego_uikit_signaling_plugin: ^2.8.20
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
