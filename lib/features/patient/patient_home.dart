@@ -6,9 +6,26 @@ import 'package:neuroguard/features/patient/navigate_home_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
 import 'package:neuroguard/core/services/location_service.dart';
+import 'package:neuroguard/features/shared/widgets/pocket_check_widget.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PatientHome
+//
+// FIX: PocketCheckInitializer now wraps the Scaffold here so that
+// PocketCheckService runs ONLY on the patient's device.
+//
+// Flow:
+//   1. _checkAuthAndLoad() resolves the real Firebase UID.
+//   2. setState() sets _patientId to the real UID and triggers a rebuild.
+//   3. build() detects _patientId is non-empty and wraps the Scaffold with
+//      PocketCheckInitializer, which calls PocketCheckService.initialize().
+//   4. PocketCheckService starts:
+//        • _listenForCaregiverCommand() — watches Firestore for the trigger flag
+//        • _startPassiveInactivityMonitor() — 15-min background variance check
+//   5. When the CAREGIVER presses the button in VitalsPage or PocketCheckCard,
+//      triggerRemoteCheck() sets commands.trigger_pocket_check = true in Firestore.
+//   6. _listenForCaregiverCommand() picks it up HERE (on the patient device),
+//      vibrates, runs the accelerometer algorithm, and writes the result back.
 // ─────────────────────────────────────────────────────────────────────────────
 class PatientHome extends StatefulWidget {
   /// Optional — legacy callers pass this in. We always prefer the
@@ -25,14 +42,13 @@ class _PatientHomeState extends State<PatientHome> {
   final _authService = AuthService();
 
   String _patientName = '...';
-  String _patientId = '';
+  String _patientId   = '';   // empty until _checkAuthAndLoad() resolves it
 
   static const Color limeGreen  = Color(0xFFB5E800);
   static const Color purple     = Color(0xFF7B52D9);
   static const Color crimsonRed = Color(0xFFBB0000);
   static const Color darkBg     = Color(0xFF1A1A1A);
 
-  // Tracks whether the LOCATION button is waiting for GPS + Firestore
   bool _isLocating = false;
 
   @override
@@ -41,7 +57,7 @@ class _PatientHomeState extends State<PatientHome> {
     _checkAuthAndLoad();
   }
 
-  // ── Auth guard + data load ─────────────────────────────────────────────
+  // ── Auth guard + data load ─────────────────────────────────────────────────
   Future<void> _checkAuthAndLoad() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -59,13 +75,12 @@ class _PatientHomeState extends State<PatientHome> {
       setState(() {
         _patientName = data?['name'] as String? ?? 'Friend';
         _patientId   = uid;
+        // Setting _patientId here triggers a rebuild. build() then wraps
+        // the Scaffold with PocketCheckInitializer, starting the service
+        // on this (patient) device for the first and only time.
       });
-      // Start live GPS tracking now that we have the confirmed real uid.
-      // This writes liveLocation to users/{uid} in Firestore so the
-      // caregiver's TrackerPage can display the patient marker.
       LocationService().startTracking(patientId: uid);
     } catch (e) {
-      // getUserData failed — still show the screen with fallback name
       if (!mounted) return;
       setState(() {
         _patientName = 'Friend';
@@ -76,26 +91,21 @@ class _PatientHomeState extends State<PatientHome> {
     }
   }
 
-  // ── Get first name only for friendly greeting ──────────────────────────
   String get _firstName {
     final parts = _patientName.trim().split(' ');
     return parts.isNotEmpty ? parts[0].toUpperCase() : _patientName.toUpperCase();
   }
 
-  // ── Format today's date (dynamic) ─────────────────────────────────────
   String get _todayDate {
-    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const days   = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
     const months = [
       'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
       'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
     ];
     final now = DateTime.now();
-    final dayName   = days[now.weekday - 1];
-    final monthName = months[now.month - 1];
-    return '$dayName, ${now.day} $monthName';
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
   }
 
-  // ── Greeting changes by time of day ───────────────────────────────────
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good Morning';
@@ -105,7 +115,7 @@ class _PatientHomeState extends State<PatientHome> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: darkBg,
       body: SafeArea(
         child: Column(
@@ -126,13 +136,11 @@ class _PatientHomeState extends State<PatientHome> {
                 ),
               ),
             ),
-            // ── Bottom Nav ───────────────────────────────────────────────
             PatientBottomNav(
               onSettingsTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
-              // FIX: pop back to root instead of pushing a duplicate PatientHome
               onHomeTap: () => Navigator.of(context).popUntil((r) => r.isFirst),
             ),
             const SizedBox(height: 8),
@@ -140,11 +148,21 @@ class _PatientHomeState extends State<PatientHome> {
         ),
       ),
     );
+
+    // Guard: don't mount PocketCheckInitializer until the real UID is known.
+    // Before _checkAuthAndLoad() completes, _patientId is '' — mounting the
+    // service with a blank ID would cause Firestore path errors.
+    // Once _patientId is set, setState() re-runs build() and the initializer
+    // mounts exactly once for the lifetime of PatientHome.
+    if (_patientId.isEmpty) return scaffold;
+
+    return PocketCheckInitializer(
+      patientId: _patientId,
+      child: scaffold,
+    );
   }
 
-  // ───────────────────────────────────────────────
-  // FLOWER HEADER — real name + real date
-  // ───────────────────────────────────────────────
+  // ── FLOWER HEADER ──────────────────────────────────────────────────────────
   Widget _buildFlowerHeader() {
     return SizedBox(
       width: double.infinity,
@@ -153,10 +171,7 @@ class _PatientHomeState extends State<PatientHome> {
         alignment: Alignment.center,
         children: [
           Positioned.fill(
-            child: Image.asset(
-              'assets/top-flower-blob.png',
-              fit: BoxFit.fill,
-            ),
+            child: Image.asset('assets/top-flower-blob.png', fit: BoxFit.fill),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -192,9 +207,7 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // HELP ME — confirmation dialog before alerting
-  // ───────────────────────────────────────────────
+  // ── HELP ME ────────────────────────────────────────────────────────────────
   Widget _buildHelpMeButton() {
     return GestureDetector(
       onTap: _confirmHelpMe,
@@ -248,7 +261,9 @@ class _PatientHomeState extends State<PatientHome> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('SEND', style: TextStyle(color: crimsonRed, fontWeight: FontWeight.bold)),
+            child: Text('SEND',
+                style: TextStyle(
+                    color: crimsonRed, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -260,16 +275,13 @@ class _PatientHomeState extends State<PatientHome> {
     }
   }
 
-  // ───────────────────────────────────────────────
-  // UNEVEN 2 × 2 GRID
-  // ───────────────────────────────────────────────
+  // ── UNEVEN 2×2 GRID ────────────────────────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── LEFT COLUMN ──
         Expanded(
           child: Column(
             children: [
@@ -287,10 +299,7 @@ class _PatientHomeState extends State<PatientHome> {
             ],
           ),
         ),
-
         const SizedBox(width: gap),
-
-        // ── RIGHT COLUMN ──
         Expanded(
           child: Column(
             children: [
@@ -320,9 +329,7 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // LOCATION cell
-  // ───────────────────────────────────────────────
+  // ── LOCATION CELL ──────────────────────────────────────────────────────────
   Widget _buildLocationCell() {
     return GestureDetector(
       onTap: _isLocating ? null : _handleLocationTap,
@@ -331,9 +338,7 @@ class _PatientHomeState extends State<PatientHome> {
         width: double.infinity,
         height: 140,
         decoration: BoxDecoration(
-          color: _isLocating
-              ? limeGreen.withValues(alpha: 0.55)
-              : limeGreen,
+          color: _isLocating ? limeGreen.withValues(alpha: 0.55) : limeGreen,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
@@ -411,9 +416,7 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // FIX THE CLOCK
-  // ───────────────────────────────────────────────
+  // ── FIX THE CLOCK ──────────────────────────────────────────────────────────
   Widget _buildFixTheClockButton() {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -474,9 +477,7 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Generic grid cell builder
-  // ───────────────────────────────────────────────
+  // ── Generic grid cell ──────────────────────────────────────────────────────
   Widget _gridCell({
     required double height,
     required Color color,
@@ -524,9 +525,7 @@ class _PatientHomeState extends State<PatientHome> {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // Toast helper
-  // ───────────────────────────────────────────────
+  // ── Toast helper ───────────────────────────────────────────────────────────
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

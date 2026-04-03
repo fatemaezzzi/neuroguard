@@ -7,44 +7,57 @@ import 'package:neuroguard/features/auth/patient_scan_screen.dart';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
 import 'package:neuroguard/features/patient/patient_home.dart';
 
-class AuthGate extends ConsumerWidget {        // ← was StatelessWidget
+class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {   // ← WidgetRef added
+  Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authStateProvider);
     final userDataAsync = ref.watch(userDataProvider);
 
-    return authState.when(
-      loading: () => const _LoadingScreen(),
-      error: (_, __) => const LoginScreen(),
-      data: (user) {
-        if (user == null) return const LoginScreen();
+    // ── Single loading check ───────────────────────────────────────────────
+    if (authState.isLoading) return const _LoadingScreen();
 
-        return userDataAsync.when(
-          loading: () => const _LoadingScreen(),
-          error: (_, __) => const LoginScreen(),
-          data: (data) {
-            if (data == null) {
-              FirebaseAuth.instance.signOut();
-              return const LoginScreen();
-            }
+    final user = authState.value;
+    if (user == null) return const LoginScreen();
 
-            final role = data['role'] as String? ?? 'patient';
-            final isPaired = data['is_paired'] == true;
-            final uid = user.uid;
+    // ── User is signed in — wait for Firestore data ────────────────────────
+    if (userDataAsync.isLoading) return const _LoadingScreen();
 
-            if (role == 'caregiver') return const CaregiverHomePage();
-            if (!isPaired) return PatientScanScreen(patientId: uid);
-            return PatientHome(patientId: uid);
-          },
-        );
-      },
-    );
+    final data = userDataAsync.value;
+
+    if (data == null) {
+      // Doc missing — invalidate stale provider then sign out.
+      // Critical for account switching: clears caregiver cache before
+      // patient stream opens, preventing the buffering freeze.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.invalidate(userDataProvider);
+        FirebaseAuth.instance.signOut();
+      });
+      return const _LoadingScreen();
+    }
+
+    // ── UID mismatch guard ─────────────────────────────────────────────────
+    // If cached doc belongs to previous user (caregiver), hold on loading
+    // screen until the new user's (patient's) stream emits their own doc.
+    // Without this, the patient briefly sees caregiver's role and gets
+    // routed to CaregiverHomePage for a flash before correcting itself.
+    final dataUid = data['uid'] as String?;
+    if (dataUid != null && dataUid != user.uid) {
+      return const _LoadingScreen();
+    }
+
+    // ── Route by role ──────────────────────────────────────────────────────
+    final role = data['role'] as String? ?? 'patient';
+    final isPaired = data['is_paired'] == true;
+    final uid = user.uid;
+
+    if (role == 'caregiver') return const CaregiverHomePage();
+    if (!isPaired) return PatientScanScreen(patientId: uid);
+    return PatientHome(patientId: uid);
   }
 }
 
-// _LoadingScreen stays exactly the same — no changes needed
 class _LoadingScreen extends StatelessWidget {
   const _LoadingScreen();
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'vitals_page.dart';
+import 'package:neuroguard/features/caregiver/vitals_page.dart';
 import 'reports_page.dart';
 import 'all_about_dementia.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
@@ -120,7 +120,12 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: VitalsBanner(
-                  onTap: () => _go(context, const VitalsPage()),
+                  onTap: _loading
+                      ? () {}
+                      : () => _go(
+                      context,
+                      VitalsPage(patientId: _patientId),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

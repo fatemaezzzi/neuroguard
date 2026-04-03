@@ -6,43 +6,61 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/core/services/pocket_check_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VitalsPage — CAREGIVER side
+//
+// KEY FIX: PocketCheckService.initialize() has been removed from this file.
+// The service (vibration + accelerometer + Firestore listener) must only ever
+// run on the PATIENT device, via PocketCheckInitializer in patient_home.dart.
+//
+// What this page is allowed to do:
+//   • READ from Firestore (sensors node) — ✅ via _listenToFirestore()
+//   • WRITE the trigger flag to Firestore — ✅ via PocketCheckService.triggerRemoteCheck()
+//     (static helper — no service instance needed)
+//
+// What this page must NOT do:
+//   • Instantiate PocketCheckService — ❌ removed
+//   • Call _pocketService.initialize() — ❌ removed
+// ─────────────────────────────────────────────────────────────────────────────
 class VitalsPage extends StatefulWidget {
-  const VitalsPage({super.key});
+  /// The real patient UID — must be passed in from the caregiver's navigation.
+  /// Previously hardcoded to 'patient_01' which meant every caregiver always
+  /// monitored the same test account.
+  final String patientId;
+
+  const VitalsPage({super.key, required this.patientId});
 
   @override
   State<VitalsPage> createState() => _VitalsPageState();
 }
 
 class _VitalsPageState extends State<VitalsPage> {
-  static const String _patientId = 'patient_01';
-
   String _pocketStatus = 'UNKNOWN';
   String _lastVibrationTime = '--:--';
   String _sleepStatus = 'SLEEPING';
   String _sleepSubtitle = 'low movement, on bed';
 
-  late final PocketCheckService _pocketService;
+  // No PocketCheckService instance here — caregiver side never owns one.
   StreamSubscription? _firestoreSub;
 
   @override
   void initState() {
     super.initState();
-    _pocketService = PocketCheckService(patientId: _patientId);
-    _pocketService.initialize();
+    // Only start the Firestore READ listener — no service initialization.
     _listenToFirestore();
   }
 
   @override
   void dispose() {
-    _pocketService.dispose();
     _firestoreSub?.cancel();
     super.dispose();
   }
 
+  // ── Firestore READ listener (caregiver reads patient's sensor results) ─────
   void _listenToFirestore() {
     _firestoreSub = FirebaseFirestore.instance
         .collection('users')
-        .doc(_patientId)
+        .doc(widget.patientId)   // uses the real patient ID passed in
         .snapshots()
         .listen((snapshot) {
       if (!snapshot.exists || !mounted) return;
@@ -70,9 +88,9 @@ class _VitalsPageState extends State<VitalsPage> {
 
   String get _pocketStatusLabel => switch (_pocketStatus) {
     'ON_PERSON' => 'ON PERSON',
-    'ON_TABLE' => 'NOT ON PERSON',
-    'CHECKING' => 'CHECKING...',
-    _ => 'UNKNOWN',
+    'ON_TABLE'  => 'NOT ON PERSON',
+    'CHECKING'  => 'CHECKING...',
+    _           => 'UNKNOWN',
   };
 
   static const TextStyle _hugeBlack = TextStyle(
@@ -100,16 +118,14 @@ class _VitalsPageState extends State<VitalsPage> {
     color: Colors.black,
   );
 
-  static const double _overlapVeloStatus = 20.0;
+  static const double _overlapVeloStatus   = 20.0;
   static const double _overlapStatusPocket = -23.0;
-  static const double _overlapPocketVibra = 10.0;
+  static const double _overlapPocketVibra  = 10.0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
-      // ✅ FIXED BODY
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -121,8 +137,6 @@ class _VitalsPageState extends State<VitalsPage> {
           ),
         ),
       ),
-
-      // ✅ FIXED NAV BAR
       bottomNavigationBar: CaregiverBottomNav(
         onSettingsTap: () => Navigator.push(
           context,
@@ -142,10 +156,10 @@ class _VitalsPageState extends State<VitalsPage> {
         final double h3 = w * (81 / 364);
         final double h4 = w * (151 / 350);
 
-        final double topVelo = 0;
+        final double topVelo   = 0;
         final double topStatus = h1 - _overlapVeloStatus;
         final double topPocket = topStatus + h2 - _overlapStatusPocket;
-        final double topVibra = topPocket + h3 - _overlapPocketVibra;
+        final double topVibra  = topPocket + h3 - _overlapPocketVibra;
         final double totalHeight = topVibra + h4;
 
         return SizedBox(
@@ -163,8 +177,7 @@ class _VitalsPageState extends State<VitalsPage> {
                 height: h2,
                 child: Stack(
                   children: [
-                    Image.asset('assets/statussleeping.png',
-                        fit: BoxFit.fill),
+                    Image.asset('assets/statussleeping.png', fit: BoxFit.fill),
                     Positioned.fill(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -189,7 +202,8 @@ class _VitalsPageState extends State<VitalsPage> {
                 ),
               ),
 
-              /// POCKET CHECK
+              /// POCKET CHECK — button only writes Firestore trigger flag.
+              /// No PocketCheckService instance needed here.
               Positioned(
                 top: topPocket,
                 left: 0,
@@ -207,8 +221,15 @@ class _VitalsPageState extends State<VitalsPage> {
                             const Text('POCKET CHECK', style: _hugeBlack),
                             GestureDetector(
                               onTap: () async {
-                                await PocketCheckService
-                                    .triggerRemoteCheck(_patientId);
+                                // triggerRemoteCheck is a static method — it
+                                // only writes commands.trigger_pocket_check=true
+                                // to Firestore. The patient's PocketCheckService
+                                // (running in PocketCheckInitializer) picks this
+                                // up, vibrates, runs the algorithm, and writes
+                                // the result back. Nothing runs on this device.
+                                await PocketCheckService.triggerRemoteCheck(
+                                  widget.patientId,
+                                );
                               },
                               child: Image.asset(
                                 'assets/arrow.png',
@@ -239,8 +260,7 @@ class _VitalsPageState extends State<VitalsPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('LAST VIBRATION TEST',
-                              style: _hugeBlack),
+                          const Text('LAST VIBRATION TEST', style: _hugeBlack),
                           const SizedBox(height: 4),
                           Text(_lastVibrationTime, style: _smallBold),
                           const SizedBox(height: 2),
@@ -260,8 +280,7 @@ class _VitalsPageState extends State<VitalsPage> {
                 height: h1,
                 child: Stack(
                   children: [
-                    Image.asset('assets/velostatgraph.png',
-                        fit: BoxFit.fill),
+                    Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
                     const Positioned(
                       top: 18,
                       left: 24,

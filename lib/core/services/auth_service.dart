@@ -9,14 +9,11 @@ class AuthService {
   String? get currentUid => _auth.currentUser?.uid;
 
   // ── SIGN UP ────────────────────────────────────────────────────────────
-  // Creates Firebase Auth user + Firestore profile.
-  // For caregivers: stores their uid so the QR can embed it.
-  // For patients: isPaired starts false — set to true after QR scan.
   Future<String?> signUp({
     required String email,
     required String password,
     required String name,
-    required String role, // 'patient' or 'caregiver'
+    required String role,
   }) async {
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email,
@@ -30,7 +27,6 @@ class AuthService {
       'email': email,
       'role': role,
       'created_at': FieldValue.serverTimestamp(),
-      // Pairing fields — filled in after QR exchange
       'is_paired': false,
       'paired_caregiver_id': null,
       'paired_patient_id': null,
@@ -54,18 +50,30 @@ class AuthService {
   // ── SIGN OUT ───────────────────────────────────────────────────────────
   Future<void> signOut() => _auth.signOut();
 
-  // ── GET ROLE ───────────────────────────────────────────────────────────
-  Future<String?> getUserRole() async {
-    if (currentUid == null) return null;
-    final doc = await _db.collection('users').doc(currentUid).get();
-    return doc.data()?['role'] as String?;
-  }
-
-  // ── GET USER DATA ──────────────────────────────────────────────────────
+  // ── GET USER DATA (cache-first for speed) ─────────────────────────────
+  // On first call after login, tries local Firestore cache first.
+  // Falls back to server if cache miss. This eliminates the cold-start
+  // network round-trip that was causing login delay.
   Future<Map<String, dynamic>?> getUserData() async {
     if (currentUid == null) return null;
-    final doc = await _db.collection('users').doc(currentUid).get();
+    final ref = _db.collection('users').doc(currentUid);
+
+    try {
+      // Try cache first — instant on subsequent logins
+      final cached = await ref.get(const GetOptions(source: Source.cache));
+      if (cached.exists) return cached.data();
+    } catch (_) {
+      // Cache miss on fresh install — fall through to server
+    }
+
+    final doc = await ref.get(const GetOptions(source: Source.server));
     return doc.data();
+  }
+
+  // ── GET ROLE ───────────────────────────────────────────────────────────
+  Future<String?> getUserRole() async {
+    final data = await getUserData();
+    return data?['role'] as String?;
   }
 
   // ── IS PAIRED ─────────────────────────────────────────────────────────
@@ -74,22 +82,18 @@ class AuthService {
     return data?['is_paired'] == true;
   }
 
-  // ── PAIR PATIENT TO CAREGIVER (called after patient scans QR) ─────────
-  // patientId  = currently logged-in patient's uid
-  // caregiverId = uid extracted from the scanned QR code
+  // ── PAIR PATIENT TO CAREGIVER ──────────────────────────────────────────
   Future<void> pairPatientToCaregiver({
     required String patientId,
     required String caregiverId,
   }) async {
     final batch = _db.batch();
 
-    // Update patient doc
     batch.update(_db.collection('users').doc(patientId), {
       'is_paired': true,
       'paired_caregiver_id': caregiverId,
     });
 
-    // Update caregiver doc
     batch.update(_db.collection('users').doc(caregiverId), {
       'is_paired': true,
       'paired_patient_id': patientId,
@@ -98,17 +102,18 @@ class AuthService {
     await batch.commit();
   }
 
-  // ── GET LINKED PATIENT ID (for caregiver to read patient data) ─────────
+  // ── GET LINKED PATIENT ID ──────────────────────────────────────────────
   Future<String?> getLinkedPatientId() async {
     final data = await getUserData();
     return data?['paired_patient_id'] as String?;
   }
 
-  // ── GET LINKED CAREGIVER ID (for patient) ─────────────────────────────
+  // ── GET LINKED CAREGIVER ID ────────────────────────────────────────────
   Future<String?> getLinkedCaregiverId() async {
     final data = await getUserData();
     return data?['paired_caregiver_id'] as String?;
   }
+
   // ── GET ANY USER BY ID ─────────────────────────────────────────────────
   Future<Map<String, dynamic>?> getUserById(String uid) async {
     final doc = await _db.collection('users').doc(uid).get();
