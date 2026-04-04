@@ -1,68 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:neuroguard/core/providers/auth_providers.dart';
 import 'package:neuroguard/features/auth/login_screen.dart';
 import 'package:neuroguard/features/auth/patient_scan_screen.dart';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
 import 'package:neuroguard/features/patient/patient_home.dart';
 
-// The root widget that decides what screen to show.
-// 1. Not logged in → LoginScreen
-// 2. Logged in as patient, not paired → PatientScanScreen (force pairing)
-// 3. Logged in as patient, paired → PatientHome
-// 4. Logged in as caregiver → CaregiverHome
-class AuthGate extends StatelessWidget {
+class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        // Still checking auth state
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const _LoadingScreen();
-        }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authStateProvider);
+    final userDataAsync = ref.watch(userDataProvider);
 
-        // Not logged in
-        if (!authSnapshot.hasData || authSnapshot.data == null) {
-          return const LoginScreen();
-        }
+    // ── Single loading check ───────────────────────────────────────────────
+    if (authState.isLoading) return const _LoadingScreen();
 
-        // Logged in — check role and pairing status
-        return FutureBuilder<Map<String, dynamic>?>(
-          future: AuthService().getUserData(),
-          builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
-              return const _LoadingScreen();
-            }
+    final user = authState.value;
+    if (user == null) return const LoginScreen();
 
-            final data = userSnapshot.data;
-            if (data == null) {
-              // User doc missing — sign out and go to login
-              FirebaseAuth.instance.signOut();
-              return const LoginScreen();
-            }
+    // ── User is signed in — wait for Firestore data ────────────────────────
+    if (userDataAsync.isLoading) return const _LoadingScreen();
 
-            final role = data['role'] as String? ?? 'patient';
-            final isPaired = data['is_paired'] == true;
-            final uid = FirebaseAuth.instance.currentUser!.uid;
+    final data = userDataAsync.value;
 
-            if (role == 'caregiver') {
-              return const CaregiverHomePage();
-            }
+    if (data == null) {
+      // Doc missing — invalidate stale provider then sign out.
+      // Critical for account switching: clears caregiver cache before
+      // patient stream opens, preventing the buffering freeze.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.invalidate(userDataProvider);
+        FirebaseAuth.instance.signOut();
+      });
+      return const _LoadingScreen();
+    }
 
-            // Patient — check if paired
-            if (!isPaired) {
-              // Force them to pair before accessing the app
-              return PatientScanScreen(patientId: uid);
-            }
+    // ── UID mismatch guard ─────────────────────────────────────────────────
+    // If cached doc belongs to previous user (caregiver), hold on loading
+    // screen until the new user's (patient's) stream emits their own doc.
+    // Without this, the patient briefly sees caregiver's role and gets
+    // routed to CaregiverHomePage for a flash before correcting itself.
+    final dataUid = data['uid'] as String?;
+    if (dataUid != null && dataUid != user.uid) {
+      return const _LoadingScreen();
+    }
 
-            return PatientHome(patientId: uid);
-          },
-        );
-      },
-    );
+    // ── Route by role ──────────────────────────────────────────────────────
+    final role = data['role'] as String? ?? 'patient';
+    final isPaired = data['is_paired'] == true;
+    final uid = user.uid;
+
+    if (role == 'caregiver') return const CaregiverHomePage();
+    if (!isPaired) return PatientScanScreen(patientId: uid);
+    return PatientHome(patientId: uid);
   }
 }
 

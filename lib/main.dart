@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
@@ -24,6 +25,11 @@ void main() async {
   // GPS tracking will start after login once we have the real patient UID
   // LocationService().startTracking() is called from PatientHome after auth
 
+  runApp(
+      const ProviderScope(
+          child: NeuroGuardApp(),
+      ),
+  );
   // --- ZegoCloud init ---
   // Only init if a user is already logged in (returning user).
   // If not logged in yet, AuthGate will call this after login.

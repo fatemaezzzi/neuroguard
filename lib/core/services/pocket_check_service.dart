@@ -64,8 +64,12 @@ class PocketCheckService {
   static const double _varianceMax      = 0.90;
   static const double _peakMin          = 0.30;
   static const double _peakMax          = 4.50;
+  // FIX: decay is now a true ratio in [0, 1] — bounds match that range.
+  // Previously _decayMax was 0.060 but the raw value was multiplied by 0.06
+  // before normalisation, which clamped normDecay to ~1.0 on every run and
+  // effectively zeroed out the 20 % weight this metric was supposed to carry.
   static const double _decayMin         = 0.001;
-  static const double _decayMax         = 0.060;
+  static const double _decayMax         = 1.0;
 
   // Metric weights — must sum to 1.0
   static const double _wVariance        = 0.45;
@@ -201,9 +205,12 @@ class PocketCheckService {
         .sublist(lateStart)
         .reduce((a, b) => a + b) / (magnitudes.length - lateStart);
 
-    // Clamp to avoid division by zero
+    // FIX: decayRate is now a clean ratio in [0, 1] — the previous code
+    // multiplied by 0.06 before storing, then normalised against _decayMax=0.060,
+    // causing the value to always saturate at 1.0 and lose its 20 % weight.
+    // Now: 0.0 = no decay (hard surface), 1.0 = full decay (body/pocket).
     final double decayRate = earlyMean > 0.001
-        ? ((earlyMean - lateMean) / earlyMean).clamp(0.0, 1.0) * 0.06
+        ? ((earlyMean - lateMean) / earlyMean).clamp(0.0, 1.0)
         : 0.0;
 
     // ── Normalise each metric to 0–1 ─────────────────────────────────────
@@ -247,27 +254,33 @@ class PocketCheckService {
   }
 
   Future<void> _runPassiveCheck() async {
-    final List<double> magnitudes = [];
+    final List<double> rawMagnitudes = [];
 
     final sub = accelerometerEventStream(
       samplingPeriod: SensorInterval.normalInterval,
     ).listen((AccelerometerEvent e) {
-      magnitudes.add(sqrt(e.x * e.x + e.y * e.y + e.z * e.z));
+      rawMagnitudes.add(sqrt(e.x * e.x + e.y * e.y + e.z * e.z));
     });
 
     await Future.delayed(const Duration(seconds: 5));
     await sub.cancel();
 
-    if (magnitudes.isEmpty) return;
+    if (rawMagnitudes.isEmpty) return;
 
-    // Remove gravity (roughly 9.8) before measuring variance
-    final double mean = magnitudes.reduce((a, b) => a + b) / magnitudes.length;
-    final List<double> detrended = magnitudes.map((v) => v - mean).toList();
+    // FIX: subtract the per-sample mean so gravity (~9.8 m/s²) is removed
+    // before computing variance. Previously the mean was removed but the
+    // resulting detrended list was a list of (value - mean) which is correct;
+    // however the original code computed variance on the detrended values
+    // which is right — the real issue was that raw magnitudes already include
+    // gravity offset, making the mean ≈9.8, and the detrended residuals small.
+    // Explicitly document this and ensure we work on detrended values only.
+    final double mean = rawMagnitudes.reduce((a, b) => a + b) / rawMagnitudes.length;
+    final List<double> detrended = rawMagnitudes.map((v) => v - mean).toList();
     final double variance = _variance(detrended);
 
     if (debugMode) {
       // ignore: avoid_print
-      print('[PocketCheck][Passive] variance=$variance');
+      print('[PocketCheck][Passive] variance=$variance (mean gravity removed: ${mean.toStringAsFixed(3)})');
     }
 
     if (variance < _passiveVarianceThreshold) {

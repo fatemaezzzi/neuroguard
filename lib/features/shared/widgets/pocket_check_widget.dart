@@ -2,6 +2,59 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:neuroguard/core/services/pocket_check_service.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATIENT-SIDE WIDGET
+// Place this widget high in the patient app's widget tree (e.g. inside the
+// root Scaffold or a persistent overlay). It owns the PocketCheckService
+// lifecycle — initializing the Firestore command listener and the passive
+// inactivity monitor — without rendering any visible UI.
+//
+// Usage (patient app):
+//   PocketCheckInitializer(patientId: currentUser.uid, child: MyApp())
+// ─────────────────────────────────────────────────────────────────────────────
+class PocketCheckInitializer extends StatefulWidget {
+  final String patientId;
+  final Widget child;
+
+  const PocketCheckInitializer({
+    super.key,
+    required this.patientId,
+    required this.child,
+  });
+
+  @override
+  State<PocketCheckInitializer> createState() => _PocketCheckInitializerState();
+}
+
+class _PocketCheckInitializerState extends State<PocketCheckInitializer> {
+  late final PocketCheckService _service;
+
+  @override
+  void initState() {
+    super.initState();
+    // Spin up the service on the patient device.
+    // This starts:
+    //  • _listenForCaregiverCommand() — watches Firestore for the caregiver trigger flag
+    //  • _startPassiveInactivityMonitor() — periodic background variance check
+    _service = PocketCheckService(patientId: widget.patientId);
+    _service.initialize();
+  }
+
+  @override
+  void dispose() {
+    _service.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAREGIVER-SIDE CARD
+// Displays the real-time pocket status streamed from Firestore and provides
+// a button to remotely trigger an active check on the patient's device.
+// ─────────────────────────────────────────────────────────────────────────────
 class PocketCheckCard extends StatefulWidget {
   final String patientId;
   const PocketCheckCard({super.key, required this.patientId});
@@ -13,6 +66,10 @@ class PocketCheckCard extends StatefulWidget {
 class _PocketCheckCardState extends State<PocketCheckCard> {
   String _status = 'UNKNOWN';
   String _lastCheckTime = '--:--';
+
+  // _isChecking drives the button lock-out. It is set to true immediately when
+  // the caregiver taps the button, then reset to false once Firestore confirms
+  // the patient device has finished and written a non-CHECKING status back.
   bool _isChecking = false;
 
   late final DocumentReference _doc;
@@ -34,8 +91,10 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
       final sensors = data?['sensors'] as Map<String, dynamic>?;
 
       if (sensors != null) {
+        final newStatus = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+
         setState(() {
-          _status = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+          _status = newStatus;
 
           final ts = sensors['pocket_check_timestamp'];
           if (ts != null && ts is Timestamp) {
@@ -44,16 +103,30 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
           }
 
-          _isChecking = _status == 'CHECKING';
+          // FIX: reset _isChecking when Firestore confirms the check has
+          // completed (any status other than CHECKING). Previously _isChecking
+          // was set to true locally on button press but never set back to false
+          // from the stream — it only tracked status == 'CHECKING', which
+          // correctly kept the button locked during the check, but this is now
+          // made explicit and symmetrical so the button always re-enables after
+          // the patient device writes its result.
+          _isChecking = newStatus == 'CHECKING';
         });
       }
     });
   }
 
-  // Caregiver presses this to trigger a remote pocket check
+  // Caregiver presses this to trigger a remote pocket check on the patient device.
+  // Sets the Firestore flag that PocketCheckService._listenForCaregiverCommand()
+  // is watching, which causes the patient's phone to vibrate and run the
+  // accelerometer analysis.
   Future<void> _triggerCheck() async {
+    if (_isChecking) return;
+    // Optimistically lock the button before the Firestore round-trip confirms.
     setState(() => _isChecking = true);
     await PocketCheckService.triggerRemoteCheck(widget.patientId);
+    // _isChecking will be corrected by _listenToStatus() once the patient
+    // device writes CHECKING → result back to Firestore.
   }
 
   Color get _statusColor => switch (_status) {
@@ -103,18 +176,18 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
                     letterSpacing: 1.2,
                   ),
                 ),
-                // Trigger button (caregiver side)
+                // Trigger button (caregiver side) — disabled while a check is in flight
                 GestureDetector(
                   onTap: _isChecking ? null : _triggerCheck,
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withOpacity(_isChecking ? 0.08 : 0.2),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       _isChecking ? Icons.hourglass_top : Icons.arrow_outward,
-                      color: Colors.white,
+                      color: Colors.white.withOpacity(_isChecking ? 0.4 : 1.0),
                       size: 20,
                     ),
                   ),

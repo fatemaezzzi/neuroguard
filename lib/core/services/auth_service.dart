@@ -14,6 +14,7 @@ class AuthService {
   String? get currentUserId => _auth.currentUser?.uid;
 
   // ── SIGN UP ─────────────────────────────────────────
+  // ── SIGN UP ────────────────────────────────────────────────────────────
   Future<String?> signUp({
     required String email,
     required String password,
@@ -63,12 +64,29 @@ class AuthService {
   }
 
   // ── GET USER DATA ──────────────────────────────────
+  // ── GET USER DATA (cache-first for speed) ─────────────────────────────
+  // On first call after login, tries local Firestore cache first.
+  // Falls back to server if cache miss. This eliminates the cold-start
+  // network round-trip that was causing login delay.
   Future<Map<String, dynamic>?> getUserData() async {
     if (currentUid == null) return null;
-    final doc = await _db.collection('users').doc(currentUid).get();
+    final ref = _db.collection('users').doc(currentUid);
+
+    try {
+      // Try cache first — instant on subsequent logins
+      final cached = await ref.get(const GetOptions(source: Source.cache));
+      if (cached.exists) return cached.data();
+    } catch (_) {
+      // Cache miss on fresh install — fall through to server
+    }
+
+    final doc = await ref.get(const GetOptions(source: Source.server));
     return doc.data();
   }
 
+  // ── GET ROLE ───────────────────────────────────────────────────────────
+
+  // ── IS PAIRED ─────────────────────────────────────────────────────────
   // ── IS PAIRED ──────────────────────────────────────
   Future<bool> isPaired() async {
     final data = await getUserData();
@@ -82,11 +100,13 @@ class AuthService {
   }) async {
     final batch = _db.batch();
 
+    // Update patient doc
     batch.update(_db.collection('users').doc(patientId), {
       'is_paired': true,
       'paired_caregiver_id': caregiverId,
     });
 
+    // Update caregiver doc
     batch.update(_db.collection('users').doc(caregiverId), {
       'is_paired': true,
       'paired_patient_id': patientId,
@@ -96,11 +116,13 @@ class AuthService {
   }
 
   // ── GET LINKED PATIENT ID ──────────────────────────
+  // ── GET LINKED PATIENT ID ──────────────────────────────────────────────
   Future<String?> getLinkedPatientId() async {
     final data = await getUserData();
     return data?['paired_patient_id'] as String?;
   }
 
+  // ── GET LINKED CAREGIVER ID ────────────────────────────────────────────
   // ── GET LINKED CAREGIVER ID ────────────────────────
   Future<String?> getLinkedCaregiverId() async {
     final data = await getUserData();
