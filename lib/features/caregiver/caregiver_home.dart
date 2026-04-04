@@ -6,6 +6,8 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:neuroguard/main.dart';
 
 // =============================================================================
 //  COLOUR TOKENS
@@ -47,6 +49,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
   void initState() {
     super.initState();
     _loadNames();
+    _registerFcmToken();
   }
 
   Future<void> _loadNames() async {
@@ -68,6 +71,13 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
       _patientId = patientId ?? '';
       _loading = false;
     });
+  }
+
+  Future<void> _registerFcmToken() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await saveFcmToken(uid); // saves caregiver's token to users/{caregiverUid}
+    }
   }
 
   void _go(BuildContext context, Widget page) {

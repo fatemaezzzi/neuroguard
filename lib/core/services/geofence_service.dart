@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:neuroguard/core/models/alert_model.dart';
+import 'package:neuroguard/core/services/alert_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// GeofenceService — Caregiver Side
@@ -138,6 +140,19 @@ class GeofenceService {
 
       // Emit to UI stream (so TrackerPage can show alert overlay)
       _eventController.add(event);
+
+      AlertService().send(
+        patientId: patientId,
+        alert: AlertModel(
+          type: AlertType.geoFence,
+          message: 'Patient is outside the safe zone.',
+          severity: AlertSeverity.critical,
+          metadata: {
+            'distanceFromCenter': distance,
+            'radiusMeters': radius,
+          },
+        ),
+      );
 
       // Fire local notification with action buttons
       _showBreachNotification(event);
@@ -293,6 +308,7 @@ class GeofenceService {
           radiusMeters: 0,
           timestamp: DateTime.now(),
         ));
+
       }
     } catch (e) {
       // Log error in production
