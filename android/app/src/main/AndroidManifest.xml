@@ -1,68 +1,44 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ========================= -->
     <!-- GENERAL PERMISSIONS -->
     <!-- ========================= -->
 
-    <!-- Allows use of high-frequency sensor data -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
-
-    <!-- Required for running foreground services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-
-    <!-- Required to show notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Keeps CPU awake for background operations -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-
-    <!-- Allows app to restart after device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ========================= -->
     <!-- LOCATION PERMISSIONS -->
     <!-- ========================= -->
 
-    <!-- Precise location (GPS) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-
-    <!-- Approximate location (Network) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
-    <!-- Background location access (required for geofencing) -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- ========================= -->
     <!-- AUDIO & CAMERA PERMISSIONS -->
     <!-- ========================= -->
 
-    <!-- Microphone access (calls, audio recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Camera access (video calls, snapshots) -->
     <uses-permission android:name="android.permission.CAMERA" />
-
-    <!-- Modify device audio settings -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- ========================= -->
     <!-- CONNECTIVITY PERMISSIONS -->
     <!-- ========================= -->
 
-    <!-- Check network connectivity -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Bluetooth access (for audio routing, devices) -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <!-- ========================= -->
     <!-- CALL / PHONE PERMISSIONS -->
     <!-- ========================= -->
 
-    <!-- Answer incoming phone calls -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
-
-    <!-- Read phone state (call status, etc.) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- ========================= -->
@@ -89,13 +65,11 @@
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="true">
 
-            <!-- Launcher Intent -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Flutter normal theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -106,17 +80,16 @@
         <!-- BACKGROUND SERVICE -->
         <!-- ========================= -->
 
-        <!-- Flutter background service (audio + camera use) -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="microphone|camera"
-            android:exported="false" />
+            android:exported="true"
+            tools:replace="android:exported" />
 
         <!-- ========================= -->
         <!-- FLUTTER CONFIG -->
         <!-- ========================= -->
 
-        <!-- Required for Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -128,7 +101,6 @@
     <!-- ========================= -->
 
     <queries>
-        <!-- Allows text processing intents (used by Flutter plugins) -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />

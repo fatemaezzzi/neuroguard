@@ -8,11 +8,14 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   firebase_auth
   firebase_core
+  firebase_database
   firebase_storage
   flutter_tts
   flutter_volume_controller
   geolocator_windows
   permission_handler_windows
+  screen_brightness_windows
+  share_plus
   url_launcher_windows
   zego_express_engine
   zego_zim

@@ -26,19 +26,19 @@ void main() async {
   // LocationService().startTracking() is called from PatientHome after auth
 
   runApp(
-      const ProviderScope(
-          child: NeuroGuardApp(),
-      ),
+    const ProviderScope(
+      child: NeuroGuardApp(),
+    ),
   );
+
   // --- ZegoCloud init ---
-  // Only init if a user is already logged in (returning user).
-  // If not logged in yet, AuthGate will call this after login.
   final currentUser = FirebaseAuth.instance.currentUser;
   if (currentUser != null) {
-    await _initZego(currentUser.uid, currentUser.displayName ?? 'NeuroGuard User');
+    await _initZego(
+      currentUser.uid,
+      currentUser.displayName ?? 'NeuroGuard User',
+    );
   }
-
-  runApp(const NeuroGuardApp());
 }
 
 /// Call this once after login with the real UID.
