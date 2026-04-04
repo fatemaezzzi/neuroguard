@@ -740,7 +740,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
             children: [
               Expanded(
                 child: _alertActionButton(
-                  label:    "✅  It's fine",
+                  label:    "It's fine",
                   sublabel: 'Supervised outing',
                   color:    _safeGreen,
                   // Disabled while Firestore write in flight
@@ -752,7 +752,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
               const SizedBox(width: 10),
               Expanded(
                 child: _alertActionButton(
-                  label:    '🚨  Not supervised',
+                  label:    'Not supervised',
                   sublabel: 'Escalate to red alert',
                   color:    _alertRed,
                   onTap: geofenceState.isAcknowledging
@@ -856,7 +856,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: _alertRed,
-        duration: const Duration(seconds: 8),
+        duration: const Duration(seconds: 6),
         content: const Row(
           children: [
             Icon(Icons.warning_rounded, color: Colors.white),
@@ -869,6 +869,143 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                     fontWeight: FontWeight.bold,
                     fontSize: 14),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSpyCallSheet() {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A0A0A),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _alertRed.withOpacity(0.6), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+                color: _alertRed.withOpacity(0.2),
+                blurRadius: 24,
+                spreadRadius: 4),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _alertRed.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.phone_in_talk_rounded,
+                      color: _alertRed, size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Emergency Alert Sent',
+                          style: TextStyle(
+                              color: _alertRed,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3)),
+                      Text('Patient is unsupervised outside safe zone',
+                          style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Do you want to initiate a Spy Call to listen in on the patient\'s surroundings?',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'The call will connect silently — the patient\'s phone will auto-answer.',
+              style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: wire up SpyCallService.initiate(widget.patientId)
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 13, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: _alertRed.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: _alertRed.withOpacity(0.6)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.hearing_rounded,
+                              color: _alertRed, size: 18),
+                          SizedBox(width: 8),
+                          Text('Start Spy Call',
+                              style: TextStyle(
+                                  color: _alertRed,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 13, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.close_rounded,
+                              color: Colors.white54, size: 18),
+                          SizedBox(width: 8),
+                          Text('Not now',
+                              style: TextStyle(
+                                  color: Colors.white54,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -915,9 +1052,16 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   void _handleBreachAcknowledgement({required bool supervised}) {
     final notifier = ref.read(geofenceNotifierProvider(widget.patientId).notifier);
     if (supervised) {
+      // Dismiss the overlay immediately — the patient stays outside physically,
+      // so isInsideZone never flips and the ref.listen resolved path won't fire.
+      _dismissBreachOverlay();
       notifier.acknowledgeSupervisedOuting();
     } else {
+      // escalate() will cause ref.listen to hit AlertLevel.red → dismiss + snackbar.
+      // After that we show the spy call prompt.
       notifier.escalate();
+      // Small delay so the overlay slide-out animation starts before the sheet appears.
+      Future.delayed(const Duration(milliseconds: 400), _showSpyCallSheet);
     }
   }
 }

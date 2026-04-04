@@ -26,6 +26,12 @@ class LocationService {
   bool    _isTracking     = false;
   String? _activePatientId;
 
+  // Set to true after the first safe-zone cache load on startTracking.
+  // Alerts are suppressed until this is true — prevents false-breach
+  // alerts firing on the very first GPS tick after a service restart
+  // when the patient hasn't actually moved.
+  bool _safeZoneInitialised = false;
+
   // Throttle: don't re-fire breach alert within 5 minutes
   DateTime? _lastBreachAlertTime;
   static const _breachAlertCooldown = Duration(minutes: 5);
@@ -133,11 +139,12 @@ class LocationService {
   void stopTracking() {
     _positionStream?.cancel();
     _docListener?.cancel();
-    _positionStream  = null;
-    _docListener     = null;
-    _isTracking      = false;
-    _activePatientId = null;
-    _cachedSafeZone  = null;
+    _positionStream        = null;
+    _docListener           = null;
+    _isTracking            = false;
+    _activePatientId       = null;
+    _cachedSafeZone        = null;
+    _safeZoneInitialised   = false;
   }
 
   bool    get isTracking      => _isTracking;
@@ -200,6 +207,10 @@ class LocationService {
     try {
       final doc = await _db.collection('users').doc(patientId).get();
       _onDocSnapshot(doc);
+      // Mark as initialised AFTER the first real read from Firestore.
+      // The first GPS tick after this point reflects the true stored state,
+      // so no spurious transition alert will fire on restart.
+      _safeZoneInitialised = true;
     } catch (_) {}
   }
 
@@ -207,12 +218,18 @@ class LocationService {
     final cache = _cachedSafeZone;
     if (cache == null) return;
 
+    // Suppress all checks until the first Firestore read has completed.
+    // This prevents a false-breach on the very first GPS tick after restart.
+    if (!_safeZoneInitialised) return;
+
     final double dist = Geolocator.distanceBetween(
       pos.latitude, pos.longitude,
       cache.centerLat, cache.centerLng,
     );
     final bool isInside = dist <= cache.radiusMeters;
-    if (isInside == cache.wasInsideZone) return; // no state change
+
+    // Only act on a genuine state transition
+    if (isInside == cache.wasInsideZone) return;
 
     // Optimistic cache update
     _cachedSafeZone = _CachedSafeZone(
@@ -233,9 +250,11 @@ class LocationService {
       SetOptions(merge: true),
     ).then((_) async {
       if (!isInside) {
+        // Patient just LEFT the safe zone → alert
         await _logBreachEvent(patientId, pos, dist);
-        await _sendBreachAlerts(patientId, dist); // ← NEW
+        await _sendBreachAlerts(patientId, dist);
       }
+      // Patient just RE-ENTERED the safe zone → no alert needed
     });
   }
 
