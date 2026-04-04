@@ -6,7 +6,9 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:neuroguard/features/caregiver/medicine_reminders_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:neuroguard/main.dart';
 
 // =============================================================================
@@ -41,23 +43,25 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
   final _authService = AuthService();
 
   String _caregiverName = '...';
-  String _patientName = '...';
-  String _patientId = ''; // populated by _loadNames() from Firestore
-  bool _loading = true;
+  String _patientName   = '...';
+  String _patientId     = '';
+  bool   _loading       = true;
 
   @override
   void initState() {
     super.initState();
     _loadNames();
     _registerFcmToken();
+    _listenForegroundNotifications();
   }
 
+  // ── Load caregiver + patient names from Firestore ──────────────────────────
   Future<void> _loadNames() async {
     final data = await _authService.getUserData();
     if (data == null) return;
 
     final caregiverName = data['name'] as String? ?? 'Caregiver';
-    final patientId = data['paired_patient_id'] as String?;
+    final patientId     = data['paired_patient_id'] as String?;
 
     String patientName = 'Patient';
     if (patientId != null && patientId.isNotEmpty) {
@@ -67,17 +71,44 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
 
     setState(() {
       _caregiverName = caregiverName;
-      _patientName = patientName;
-      _patientId = patientId ?? '';
-      _loading = false;
+      _patientName   = patientName;
+      _patientId     = patientId ?? '';
+      _loading       = false;
     });
   }
 
+  // ── Save FCM token to Firestore ────────────────────────────────────────────
   Future<void> _registerFcmToken() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      await saveFcmToken(uid); // saves caregiver's token to users/{caregiverUid}
-    }
+    if (uid != null) await saveFcmToken(uid);
+  }
+
+  // ── Show in-app banner when notification arrives while app is open ─────────
+  void _listenForegroundNotifications() {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      final title = message.notification?.title ?? 'NeuroGuard Alert';
+      final body  = message.notification?.body  ?? '';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: kLime,
+          duration: const Duration(seconds: 6),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: kBg, fontWeight: FontWeight.bold, fontSize: 14)),
+              if (body.isNotEmpty)
+                Text(body,
+                    style: const TextStyle(color: kBg, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   void _go(BuildContext context, Widget page) {
@@ -102,10 +133,10 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
 
-              // 1. HERO BLOB — shows real caregiver + patient names
+              // 1. HERO BLOB
               HeroBlob(
                 caregiverName: _loading ? '...' : _caregiverName,
-                patientName: _loading ? '...' : _patientName,
+                patientName:   _loading ? '...' : _patientName,
               ),
               const SizedBox(height: 30),
 
@@ -117,7 +148,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                   onLocate: _loading ? () {} : () => _go(
                     context,
                     TrackerPage(
-                      patientId: _patientId,
+                      patientId:   _patientId,
                       patientName: _patientName,
                     ),
                   ),
@@ -126,21 +157,35 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               ),
               const SizedBox(height: 20),
 
-              // 3. VITALS BANNER
+              // 3. MEDICINE REMINDERS BUTTON ← NEW
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: MedicineButton(
+                  onTap: _loading
+                      ? () {}
+                      : () => _go(
+                    context,
+                    MedicineRemindersPage(patientId: _patientId),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 4. VITALS BANNER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: VitalsBanner(
                   onTap: _loading
                       ? () {}
                       : () => _go(
-                      context,
-                      VitalsPage(patientId: _patientId),
+                    context,
+                    VitalsPage(patientId: _patientId),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // 4. REPORTS | ALL ABOUT DEMENTIA
+              // 5. REPORTS | ALL ABOUT DEMENTIA
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: BottomBlobRow(
@@ -149,7 +194,6 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                 ),
               ),
               const SizedBox(height: 5),
-
             ],
           ),
         ),
@@ -159,7 +203,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
 }
 
 // =============================================================================
-//  1. HERO BLOB — now accepts real names as parameters
+//  1. HERO BLOB
 // =============================================================================
 class HeroBlob extends StatelessWidget {
   final String caregiverName;
@@ -236,8 +280,8 @@ class QuickActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double rowH   = 100;
-    const double sideH  = 80;
+    const double rowH    = 100;
+    const double sideH   = 80;
     const double locateW = 100;
     const double locateH = 100;
 
@@ -246,8 +290,6 @@ class QuickActionRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-
-          // SPY CALL
           Expanded(
             child: GestureDetector(
               onTap: onSpyCall,
@@ -272,10 +314,7 @@ class QuickActionRow extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(width: 8),
-
-          // LOCATE
           GestureDetector(
             onTap: onLocate,
             child: SizedBox(
@@ -298,10 +337,7 @@ class QuickActionRow extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(width: 8),
-
-          // SNAP TRIGGER
           Expanded(
             child: GestureDetector(
               onTap: onSnapTrigger,
@@ -311,8 +347,7 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                        child:
-                        Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
+                        child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
                     const Text('SNAP\nTRIGGER',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -327,7 +362,6 @@ class QuickActionRow extends StatelessWidget {
               ),
             ),
           ),
-
         ],
       ),
     );
@@ -335,7 +369,67 @@ class QuickActionRow extends StatelessWidget {
 }
 
 // =============================================================================
-//  3. VITALS BANNER
+//  3. MEDICINE BUTTON ← NEW
+// =============================================================================
+class MedicineButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const MedicineButton({super.key, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kLime.withOpacity(0.4), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: kLime.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.medication_outlined,
+                  color: kLime, size: 26),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('MEDICINE REMINDERS',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontFamily: 'MicrosoftSansSerifBold',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      )),
+                  SizedBox(height: 3),
+                  Text('Set and manage medication schedule',
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      )),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  4. VITALS BANNER
 // =============================================================================
 class VitalsBanner extends StatelessWidget {
   final VoidCallback onTap;
@@ -371,7 +465,7 @@ class VitalsBanner extends StatelessWidget {
 }
 
 // =============================================================================
-//  4. BOTTOM BLOB ROW
+//  5. BOTTOM BLOB ROW
 // =============================================================================
 class BottomBlobRow extends StatelessWidget {
   final VoidCallback onReports;
@@ -394,8 +488,6 @@ class BottomBlobRow extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-
-              // REPORTS
               GestureDetector(
                 onTap: onReports,
                 child: SizedBox(
@@ -405,8 +497,7 @@ class BottomBlobRow extends StatelessWidget {
                     alignment: Alignment.center,
                     children: [
                       Image.asset(kImgReports,
-                          width: blobSize,
-                          height: blobSize,
+                          width: blobSize, height: blobSize,
                           fit: BoxFit.contain),
                       const Text('REPORTS',
                           style: TextStyle(
@@ -420,8 +511,6 @@ class BottomBlobRow extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // ALL ABOUT DEMENTIA
               GestureDetector(
                 onTap: onAllAbout,
                 child: SizedBox(
@@ -431,8 +520,7 @@ class BottomBlobRow extends StatelessWidget {
                     alignment: Alignment.center,
                     children: [
                       Image.asset(kImgAllAbout,
-                          width: blobSize,
-                          height: blobSize,
+                          width: blobSize, height: blobSize,
                           fit: BoxFit.contain),
                       const Text('ALL\nABOUT\nDEMENTIA',
                           textAlign: TextAlign.center,
@@ -448,7 +536,6 @@ class BottomBlobRow extends StatelessWidget {
                   ),
                 ),
               ),
-
             ],
           ),
         );

@@ -12,7 +12,6 @@ class AlertService {
 
   final _db = FirebaseFirestore.instance;
 
-  // FCM V1 endpoint — replace YOUR_PROJECT_ID with: neuroguard-1f865
   static const _fcmUrl =
       'https://fcm.googleapis.com/v1/projects/neuroguard-1f865/messages:send';
 
@@ -39,24 +38,18 @@ class AlertService {
   }) async {
     try {
       // 1. Get caregiver FCM token from Firestore
+      // FIX: use 'paired_caregiver_id' (matches auth_service.dart / pairPatientToCaregiver)
       final patientDoc = await _db.collection('users').doc(patientId).get();
       final patientData = patientDoc.data();
-      final caregiverId = patientData != null
-          ? patientData['caregiverId'] as String?
-          : null;
-      if (caregiverId == null) return;
+      final caregiverId = patientData?['paired_caregiver_id'] as String?;
+      if (caregiverId == null || caregiverId.isEmpty) return;
 
-      final caregiverDoc =
-      await _db.collection('users').doc(caregiverId).get();
-      final caregiverData = caregiverDoc.data();
-      final fcmToken = caregiverData != null
-          ? caregiverData['fcmToken'] as String?
-          : null;
-      if (fcmToken == null) return;
+      final caregiverDoc = await _db.collection('users').doc(caregiverId).get();
+      final fcmToken = caregiverDoc.data()?['fcmToken'] as String?;
+      if (fcmToken == null || fcmToken.isEmpty) return;
 
       // 2. Load service account JSON from assets
-      final jsonStr =
-      await rootBundle.loadString('assets/service_account.json');
+      final jsonStr = await rootBundle.loadString('assets/service_account.json');
       final jsonMap = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       // 3. Get a short-lived OAuth2 access token
@@ -68,7 +61,7 @@ class AlertService {
       );
 
       // 4. Send FCM V1 message
-      final response = await authClient.post(
+      await authClient.post(
         Uri.parse(_fcmUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -98,8 +91,9 @@ class AlertService {
       );
 
       authClient.close();
-    } catch (_) {
+    } catch (e) {
       // Firestore write already succeeded — don't crash the app
+      assert(() { print('[AlertService] FCM send failed: $e'); return true; }());
     }
   }
 
@@ -107,7 +101,7 @@ class AlertService {
     switch (type) {
       case AlertType.geoFence:  return 'Patient outside safe zone';
       case AlertType.medicine:  return 'Medicine reminder';
-      case AlertType.spyCall:   return 'Remote monitoring triggered';
+      case AlertType.spyCall:   return 'Spy call suggestion';
       case AlertType.matSensor: return 'Bed alert';
     }
   }
