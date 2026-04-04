@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'core/services/permission_service.dart';
 import 'core/services/location_service.dart';
+import 'core/services/spy_call_service.dart';
 import 'core/services/background_task_handler.dart';
 import 'firebase_options.dart';
 import 'features/auth/auth_gate.dart';
@@ -106,6 +107,7 @@ void main() async {
 
   await PermissionService.requestAllPermissions();
   await LocationService().initialise();
+  await SpyCallService.init();
 
   // Configure foreground task options
   _initForegroundTask();
