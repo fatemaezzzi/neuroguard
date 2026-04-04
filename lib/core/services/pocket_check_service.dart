@@ -56,14 +56,14 @@ class PocketCheckService {
   // Score thresholds — anything above TABLE_THRESHOLD = ON_TABLE
   //                  — anything below PERSON_THRESHOLD = ON_PERSON
   //                  — in between = UNKNOWN (safe default)
-  static const double _tableThreshold  = 0.62;
-  static const double _personThreshold = 0.60;
+  static const double _tableThreshold  = 0.72;
+  static const double _personThreshold = 0.55;
 
   // Individual metric bounds (used for 0-1 normalisation)
   static const double _varianceMin      = 0.02;
-  static const double _varianceMax      = 0.90;
+  static const double _varianceMax      = 0.55;
   static const double _peakMin          = 0.30;
-  static const double _peakMax          = 4.50;
+  static const double _peakMax          = 2.20;
   // FIX: decay is now a true ratio in [0, 1] — bounds match that range.
   // Previously _decayMax was 0.060 but the raw value was multiplied by 0.06
   // before normalisation, which clamped normDecay to ~1.0 on every run and
@@ -72,14 +72,14 @@ class PocketCheckService {
   static const double _decayMax         = 1.0;
 
   // Metric weights — must sum to 1.0
-  static const double _wVariance        = 0.45;
+  static const double _wVariance        = 0.60;
   static const double _wPeak            = 0.35;
-  static const double _wDecay           = 0.20;
+  static const double _wDecay           = 0.25;
 
   // Timing
-  static const int _vibrationDurationMs       = 800;   // slightly longer for better signal
-  static const int _preVibrationDelayMs       = 80;    // wait for motor to spin up
-  static const int _collectDurationMs         = 1400;  // collect for 1.4s
+  static const int _vibrationDurationMs       = 1600;   // slightly longer for better signal
+  static const int _preVibrationDelayMs       = 100;    // wait for motor to spin up
+  static const int _collectDurationMs         = 1200;  // collect for 1.4s
   static const int _passiveInactivityMinutes  = 15;
   static const double _passiveVarianceThreshold = 0.008; // stricter for passive check
 
@@ -147,7 +147,10 @@ class PocketCheckService {
 
     if (debugMode) {
       // ignore: avoid_print
-      print('[PocketCheck] $result');
+      print('[PocketCheck] score=${result.score.toStringAsFixed(3)} '
+          'var=${result.variance.toStringAsFixed(4)} '
+          'peak=${result.peakAmplitude.toStringAsFixed(3)} '
+          'decay=${result.decayRate.toStringAsFixed(4)}');
     }
 
     await _reportStatusToFirestore(result.status);
@@ -221,9 +224,12 @@ class PocketCheckService {
     final double normDecay    = 1.0 - _normalise(decayRate, _decayMin, _decayMax);
 
     // ── Weighted score ────────────────────────────────────────────────────
-    final double score = (_wVariance * normVariance)
+    final double rawScore = (_wVariance * normVariance)
         + (_wPeak     * normPeak)
         + (_wDecay    * normDecay);
+    // INVERT: on this device, higher signal = on person (body adds motion noise)
+    // lower signal = on hard surface (motor damps cleanly)
+    final double score = 1.0 - rawScore;
 
     // ── Decision ──────────────────────────────────────────────────────────
     final PocketStatus status;
