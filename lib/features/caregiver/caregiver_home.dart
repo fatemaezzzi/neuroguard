@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:neuroguard/features/caregiver/vitals_page.dart';
+import 'package:neuroguard/features/caregiver/spy_call_page.dart';
+import 'vitals_page.dart';
 import 'reports_page.dart';
 import 'all_about_dementia.dart';
 import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
-import 'spy_call_page.dart';
 
 // =============================================================================
 //  COLOUR TOKENS
@@ -104,17 +104,18 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: QuickActionRow(
-                  patientId:   _patientId,
-                  caregiverId: _authService.currentUserId ?? '',
+                  // SPY CALL — audio only
                   onSpyCall: _loading
                       ? () {}
                       : () => _go(
                     context,
                     SpyCallPage(
-                      patientId:   _patientId,
-                      caregiverId: _authService.currentUserId ?? '',
+                      patientId:    _patientId,
+                      caregiverId:  _authService.currentUserId ?? '',
+                      videoEnabled: false,
                     ),
                   ),
+                  // LOCATE
                   onLocate: _loading
                       ? () {}
                       : () => _go(
@@ -124,7 +125,17 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                       patientName: _patientName,
                     ),
                   ),
-                  onSnapTrigger: () {},
+                  // SNAP TRIGGER — audio + video
+                  onSnapTrigger: _loading
+                      ? () {}
+                      : () => _go(
+                    context,
+                    SpyCallPage(
+                      patientId:    _patientId,
+                      caregiverId:  _authService.currentUserId ?? '',
+                      videoEnabled: true,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -136,8 +147,8 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                   onTap: _loading
                       ? () {}
                       : () => _go(
-                      context,
-                      VitalsPage(patientId: _patientId),
+                    context,
+                    VitalsPage(patientId: _patientId),
                   ),
                 ),
               ),
@@ -224,21 +235,18 @@ class HeroBlob extends StatelessWidget {
 
 // =============================================================================
 //  2. QUICK ACTION ROW
+//  No changes to the widget itself — callbacks are wired from CaregiverHomePage
 // =============================================================================
 class QuickActionRow extends StatelessWidget {
   final VoidCallback onSpyCall;
   final VoidCallback onLocate;
   final VoidCallback onSnapTrigger;
-  final String patientId;
-  final String caregiverId;
 
   const QuickActionRow({
     super.key,
     required this.onSpyCall,
     required this.onLocate,
     required this.onSnapTrigger,
-    required this.patientId,
-    required this.caregiverId,
   });
 
   @override

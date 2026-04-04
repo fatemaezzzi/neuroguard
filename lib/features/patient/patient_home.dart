@@ -7,6 +7,8 @@ import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
 import 'package:neuroguard/core/services/location_service.dart';
 import 'package:neuroguard/features/shared/widgets/pocket_check_widget.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:neuroguard/features/patient/spy_call_listener.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PatientHome
@@ -156,9 +158,12 @@ class _PatientHomeState extends State<PatientHome> {
     // mounts exactly once for the lifetime of PatientHome.
     if (_patientId.isEmpty) return scaffold;
 
-    return PocketCheckInitializer(
+    return SpyCallListener(
       patientId: _patientId,
-      child: scaffold,
+      child: PocketCheckInitializer(
+        patientId: _patientId,
+        child: scaffold,
+      ),
     );
   }
 

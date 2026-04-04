@@ -48,20 +48,22 @@
     <application
         android:name="${applicationName}"
         android:label="neuroguard"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true">
 
         <!-- ========================= -->
         <!-- MAIN ACTIVITY -->
         <!-- ========================= -->
+
         <activity
-            android:showOnLockScreen="true"
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:showOnLockScreen="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="true">
 
@@ -73,7 +75,6 @@
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
-
         </activity>
 
         <!-- ========================= -->
@@ -97,7 +98,7 @@
     </application>
 
     <!-- ========================= -->
-    <!-- PACKAGE VISIBILITY (Android 11+) -->
+    <!-- PACKAGE VISIBILITY -->
     <!-- ========================= -->
 
     <queries>
