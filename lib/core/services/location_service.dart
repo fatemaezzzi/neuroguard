@@ -82,8 +82,14 @@ class LocationService {
     }
     if (permission == LocationPermission.deniedForever) return false;
 
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    // ✅ FIX: whileInUse is NOT sufficient for a location-type FGS on SDK 34+
+    // The service WILL crash and restart every 5s if we proceed with whileInUse
+    if (permission != LocationPermission.always) {
+      print('[LocationService] Background location (always) is required. Got: $permission');
+      return false; // Stop here — do NOT start tracking
+    }
+
+    return true;
   }
 
   Future<PermissionStatus> getPermissionStatus() async {

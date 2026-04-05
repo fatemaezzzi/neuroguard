@@ -152,7 +152,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                     context,
                     SpyCallPage(
                       patientId:    _patientId,
-                      caregiverId:  _authService.currentUserId ?? '',
+                      caregiverId:  FirebaseAuth.instance.currentUser?.uid ?? '',
                       videoEnabled: false,
                     ),
                   ),
@@ -160,8 +160,6 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                   onLocate: _loading
                       ? () {}
                       : () => _go(
-                  onSpyCall: () {},
-                  onLocate: _loading ? () {} : () => _go(
                     context,
                     TrackerPage(
                       patientId:   _patientId,
@@ -175,7 +173,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                     context,
                     SpyCallPage(
                       patientId:    _patientId,
-                      caregiverId:  _authService.currentUserId ?? '',
+                      caregiverId:  FirebaseAuth.instance.currentUser?.uid ?? '',
                       videoEnabled: true,
                     ),
                   ),
