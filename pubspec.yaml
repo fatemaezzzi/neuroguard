@@ -71,7 +71,7 @@ dependencies:
   #state management using riverpod
   flutter_riverpod: ^2.5.1
   riverpod_annotation: ^2.5.1
-  zego_express_engine: 3.23.0
+  agora_rtc_engine: 6.3.2
 
 
 dev_dependencies:

@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  agora_rtc_engine
   cloud_firestore
   firebase_auth
   firebase_core
@@ -11,9 +12,9 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_timezone
   flutter_tts
   geolocator_windows
+  iris_method_channel
   permission_handler_windows
   url_launcher_windows
-  zego_express_engine
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
