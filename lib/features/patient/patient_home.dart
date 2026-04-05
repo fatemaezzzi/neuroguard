@@ -11,6 +11,8 @@ import 'package:neuroguard/features/shared/widgets/pocket_check_widget.dart';
 import 'package:neuroguard/main.dart' show activatePatientBackground, saveFcmToken;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:neuroguard/features/patient/spy_call_listener.dart';
+import 'package:neuroguard/features/shared/widgets/patient_medicine_strip.dart';
+import 'package:neuroguard/features/patient/patient_medicine_view_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PatientHome
@@ -287,57 +289,53 @@ class _PatientHomeState extends State<PatientHome> {
     }
   }
 
-  // ── UNEVEN 2×2 GRID ────────────────────────────────────────────────────────
+  // ── GRID: Location + Medicine Strip ───────────────────────────────────────
   Widget _buildUnevenGrid() {
     const double gap = 12;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        Expanded(
-          child: Column(
-            children: [
-              _buildLocationCell(),
-              const SizedBox(height: gap),
-              _gridCell(
-                height: 105,
-                color: purple,
-                icon: Icons.phone_rounded,
-                iconColor: Colors.white,
-                label: 'CALL\nFAMILY',
-                labelColor: Colors.white,
-                onTap: () => _toast('Calling your family…'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: gap),
-        Expanded(
-          child: Column(
-            children: [
-              _gridCell(
-                height: 105,
+        // Top row: Location (left) + Medicine button (right)
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildLocationCell()),
+            const SizedBox(width: gap),
+            Expanded(
+              child: _gridCell(
+                height: 140,
                 color: purple,
                 icon: Icons.medical_services_rounded,
                 iconColor: Colors.white,
                 label: 'MEDICINE',
                 labelColor: Colors.white,
-                onTap: () => _toast('Opening medicine schedule…'),
+                onTap: _openMedicinePage,
               ),
-              const SizedBox(height: gap),
-              _gridCell(
-                height: 140,
-                color: purple,
-                icon: Icons.people_rounded,
-                iconColor: Colors.white,
-                label: 'CAREGIVER',
-                labelColor: Colors.white,
-                onTap: () => _toast('Contacting caregiver…'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: gap),
+
+        // Medicine reminder strip (full width, live from Firestore)
+        if (_patientId.isNotEmpty)
+          PatientMedicineStrip(
+            patientId: _patientId,
+            onTap: _openMedicinePage,
+          ),
       ],
+    );
+  }
+
+  void _openMedicinePage() {
+    if (_patientId.isEmpty) {
+      _toast('Please wait, loading your profile…');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientMedicineViewPage(patientId: _patientId),
+      ),
     );
   }
 

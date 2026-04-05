@@ -24,8 +24,6 @@ import 'package:neuroguard/features/shared/settings_screen.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 class VitalsPage extends StatefulWidget {
   /// The real patient UID — must be passed in from the caregiver's navigation.
-  /// Previously hardcoded to 'patient_01' which meant every caregiver always
-  /// monitored the same test account.
   final String patientId;
 
   const VitalsPage({super.key, required this.patientId});
@@ -40,13 +38,11 @@ class _VitalsPageState extends State<VitalsPage> {
   String _sleepStatus = 'SLEEPING';
   String _sleepSubtitle = 'low movement, on bed';
 
-  // No PocketCheckService instance here — caregiver side never owns one.
   StreamSubscription? _firestoreSub;
 
   @override
   void initState() {
     super.initState();
-    // Only start the Firestore READ listener — no service initialization.
     _listenToFirestore();
   }
 
@@ -56,11 +52,10 @@ class _VitalsPageState extends State<VitalsPage> {
     super.dispose();
   }
 
-  // ── Firestore READ listener (caregiver reads patient's sensor results) ─────
   void _listenToFirestore() {
     _firestoreSub = FirebaseFirestore.instance
         .collection('users')
-        .doc(widget.patientId)   // uses the real patient ID passed in
+        .doc(widget.patientId)
         .snapshots()
         .listen((snapshot) {
       if (!snapshot.exists || !mounted) return;
@@ -93,33 +88,11 @@ class _VitalsPageState extends State<VitalsPage> {
     _           => 'UNKNOWN',
   };
 
-  static const TextStyle _hugeBlack = TextStyle(
-    fontWeight: FontWeight.w900,
-    fontSize: 22,
-    letterSpacing: 1.5,
-    color: Colors.black,
-  );
-
-  static const TextStyle _hugeGreen = TextStyle(
-    fontWeight: FontWeight.w900,
-    fontSize: 22,
-    letterSpacing: 1.5,
-    color: Color(0xFFCCFF00),
-  );
-
-  static const TextStyle _smallBody = TextStyle(
-    fontSize: 12,
-    color: Colors.black54,
-  );
-
-  static const TextStyle _smallBold = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-    color: Colors.black,
-  );
-
+  // ── Overlap constants — positive = blobs overlap each other (chain effect)
+  // _overlapStatusPocket was -23 which created a GAP, not an overlap.
+  // Image 1 shows the pocket blob should tuck INTO the status blob slightly.
   static const double _overlapVeloStatus   = 20.0;
-  static const double _overlapStatusPocket = -23.0;
+  static const double _overlapStatusPocket = 14.0;  // FIX: was -23 (gap) → 14 (overlap)
   static const double _overlapPocketVibra  = 10.0;
 
   @override
@@ -151,14 +124,44 @@ class _VitalsPageState extends State<VitalsPage> {
       builder: (context, constraints) {
         final double w = constraints.maxWidth;
 
+        // Heights computed from original asset aspect ratios
         final double h1 = w * (190 / 364);
         final double h2 = w * (145 / 364);
         final double h3 = w * (81 / 364);
         final double h4 = w * (151 / 350);
 
+        // Scale font sizes proportionally to blob width so text never overflows
+        // Base design was ~364px wide → derive a scale factor from actual width
+        final double fontScale = (w / 364).clamp(0.7, 1.3);
+        final double hugeFontSize  = 22 * fontScale;
+        final double smallFontSize = 12 * fontScale;
+        final double boldFontSize  = 14 * fontScale;
+
+        final TextStyle hugeBlack = TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: hugeFontSize,
+          letterSpacing: 1.2,
+          color: Colors.black,
+        );
+        final TextStyle hugeGreen = TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: hugeFontSize,
+          letterSpacing: 1.2,
+          color: const Color(0xFFCCFF00),
+        );
+        final TextStyle smallBody = TextStyle(
+          fontSize: smallFontSize,
+          color: Colors.black54,
+        );
+        final TextStyle smallBold = TextStyle(
+          fontSize: boldFontSize,
+          fontWeight: FontWeight.w600,
+          color: Colors.black,
+        );
+
         final double topVelo   = 0;
         final double topStatus = h1 - _overlapVeloStatus;
-        final double topPocket = topStatus + h2 - _overlapStatusPocket;
+        final double topPocket = topStatus + h2 - _overlapStatusPocket; // FIX: now subtracts correctly
         final double topVibra  = topPocket + h3 - _overlapPocketVibra;
         final double totalHeight = topVibra + h4;
 
@@ -168,6 +171,31 @@ class _VitalsPageState extends State<VitalsPage> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
+
+              /// GRAPH — rendered first (bottom of Z-order) so STATUS overlaps it
+              Positioned(
+                top: topVelo,
+                left: 0,
+                right: 0,
+                height: h1,
+                child: Stack(
+                  children: [
+                    Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
+                    Positioned(
+                      top: 18,
+                      left: 24,
+                      child: Text('VELOSTAT GRAPH', style: hugeBlack),
+                    ),
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      top: h1 * 0.38,
+                      bottom: 16,
+                      child: _buildChart(),
+                    ),
+                  ],
+                ),
+              ),
 
               /// STATUS
               Positioned(
@@ -180,19 +208,38 @@ class _VitalsPageState extends State<VitalsPage> {
                     Image.asset('assets/statussleeping.png', fit: BoxFit.fill),
                     Positioned.fill(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        // FIX: reduced horizontal padding so text has more room
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const Text('STATUS', style: _hugeGreen),
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(_sleepStatus, style: _hugeBlack),
-                                const SizedBox(height: 2),
-                                Text(_sleepSubtitle, style: _smallBody),
-                              ],
+                            // FIX: wrap left label so it doesn't push right side off screen
+                            Text('STATUS', style: hugeGreen),
+                            // FIX: Flexible + textAlign prevents overflow on small screens
+                            Flexible(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _sleepStatus,
+                                    style: hugeBlack,
+                                    textAlign: TextAlign.right,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _sleepSubtitle,
+                                    style: smallBody,
+                                    textAlign: TextAlign.right,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -202,8 +249,7 @@ class _VitalsPageState extends State<VitalsPage> {
                 ),
               ),
 
-              /// POCKET CHECK — button only writes Firestore trigger flag.
-              /// No PocketCheckService instance needed here.
+              /// POCKET CHECK
               Positioned(
                 top: topPocket,
                 left: 0,
@@ -214,27 +260,23 @@ class _VitalsPageState extends State<VitalsPage> {
                     Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
                     Positioned.fill(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const Text('POCKET CHECK', style: _hugeBlack),
+                            Text('POCKET CHECK', style: hugeBlack),
                             GestureDetector(
                               onTap: () async {
-                                // triggerRemoteCheck is a static method — it
-                                // only writes commands.trigger_pocket_check=true
-                                // to Firestore. The patient's PocketCheckService
-                                // (running in PocketCheckInitializer) picks this
-                                // up, vibrates, runs the algorithm, and writes
-                                // the result back. Nothing runs on this device.
                                 await PocketCheckService.triggerRemoteCheck(
                                   widget.patientId,
                                 );
                               },
+                              // FIX: slightly larger tap target, vertically centered
                               child: Image.asset(
                                 'assets/arrow.png',
-                                width: 30,
-                                height: 30,
+                                width: 32,
+                                height: 32,
                                 color: const Color(0xFFCCFF00),
                               ),
                             ),
@@ -246,7 +288,7 @@ class _VitalsPageState extends State<VitalsPage> {
                 ),
               ),
 
-              /// LAST VIBRATION
+              /// LAST VIBRATION TEST
               Positioned(
                 top: topVibra,
                 left: 0,
@@ -254,17 +296,16 @@ class _VitalsPageState extends State<VitalsPage> {
                 height: h4,
                 child: Stack(
                   children: [
-                    Image.asset('assets/lastvibrationtest.png',
-                        fit: BoxFit.fill),
+                    Image.asset('assets/lastvibrationtest.png', fit: BoxFit.fill),
                     Positioned.fill(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('LAST VIBRATION TEST', style: _hugeBlack),
+                          Text('LAST VIBRATION TEST', style: hugeBlack),
                           const SizedBox(height: 4),
-                          Text(_lastVibrationTime, style: _smallBold),
+                          Text(_lastVibrationTime, style: smallBold),
                           const SizedBox(height: 2),
-                          Text(_pocketStatusLabel, style: _hugeBlack),
+                          Text(_pocketStatusLabel, style: hugeBlack),
                         ],
                       ),
                     ),
@@ -272,30 +313,6 @@ class _VitalsPageState extends State<VitalsPage> {
                 ),
               ),
 
-              /// GRAPH
-              Positioned(
-                top: topVelo,
-                left: 0,
-                right: 0,
-                height: h1,
-                child: Stack(
-                  children: [
-                    Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
-                    const Positioned(
-                      top: 18,
-                      left: 24,
-                      child: Text('VELOSTAT GRAPH', style: _hugeBlack),
-                    ),
-                    Positioned(
-                      left: 16,
-                      right: 16,
-                      top: h1 * 0.38,
-                      bottom: 16,
-                      child: _buildChart(),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         );

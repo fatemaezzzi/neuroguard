@@ -6,7 +6,9 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import '../../firebase_options.dart';
 import '../models/alert_model.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'alert_service.dart';
 
 /// MedicineService
@@ -41,10 +43,15 @@ import 'alert_service.dart';
 // MUST be a top-level or static function — Flutter requirement for background
 // isolate entry points. Do NOT move this inside the class.
 @pragma('vm:entry-point')
-void _onNotificationTap(NotificationResponse response) {
+Future<void> _onNotificationTap(NotificationResponse response) async {
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
   final parts = (response.payload ?? '').split('|');
   if (parts.length < 2) return;
-  MedicineService().onReminderFired(
+  await MedicineService().onReminderFired(
     patientId:    parts[0],
     medicineName: parts[1],
   );
