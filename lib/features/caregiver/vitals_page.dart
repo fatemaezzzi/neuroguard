@@ -16,26 +16,20 @@ class VitalsPage extends StatefulWidget {
 
 class _VitalsPageState extends State<VitalsPage> {
 
-  // ── State variables ───────────────────────────────────────────
   String _pocketStatus      = 'UNKNOWN';
   String _lastVibrationTime = '--:--';
   String _sleepStatus       = 'UNKNOWN';
   String _sleepSubtitle     = '--';
 
-  // Real-time micro-movement line chart data (last 10 windows)
   List<FlSpot> _microMovementSpots = [];
-
-  // Bar graph data (last 10 windows)
   List<Map<String, dynamic>> _windowHistory = [];
 
-  // Alert flags
   bool _isHypersomnia  = false;
   bool _isUnresponsive = false;
 
   StreamSubscription? _firestoreSub;
   StreamSubscription? _windowsSub;
 
-  // ── Text styles ───────────────────────────────────────────────
   static const TextStyle _hugeBlack = TextStyle(
     fontWeight: FontWeight.w900, fontSize: 22,
     letterSpacing: 1.5, color: Colors.black,
@@ -55,7 +49,6 @@ class _VitalsPageState extends State<VitalsPage> {
   static const double _overlapStatusPocket = -23.0;
   static const double _overlapPocketVibra  = 10.0;
 
-  // ── Init ─────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -70,7 +63,6 @@ class _VitalsPageState extends State<VitalsPage> {
     super.dispose();
   }
 
-  // ── Firestore listener: users/{patientId} (live status) ──────
   void _listenToFirestore() {
     _firestoreSub = FirebaseFirestore.instance
         .collection('users')
@@ -79,11 +71,19 @@ class _VitalsPageState extends State<VitalsPage> {
         .listen((snapshot) {
       if (!snapshot.exists || !mounted) return;
 
-      final data    = snapshot.data() as Map<String, dynamic>?;
+      final data = snapshot.data() as Map<String, dynamic>?;
+
+      debugPrint('=== FIRESTORE DATA ===');
+      debugPrint(data.toString());
+      debugPrint('=== SENSORS NODE ===');
+      debugPrint(data?['sensors'].toString());
+
       final sensors = data?['sensors'] as Map<String, dynamic>?;
       if (sensors == null) return;
 
-      // Pocket check timestamp
+      debugPrint('=== BED STATUS ===');
+      debugPrint(sensors['bed_status']?.toString() ?? 'null');
+
       final ts = sensors['pocket_check_timestamp'];
       String timeStr = '--:--';
       if (ts is Timestamp) {
@@ -93,7 +93,6 @@ class _VitalsPageState extends State<VitalsPage> {
             '${dt.minute.toString().padLeft(2, '0')}';
       }
 
-      // Bed state from ESP32
       final bedState = sensors['bed_status']?.toString() ?? 'UNKNOWN';
 
       setState(() {
@@ -107,7 +106,6 @@ class _VitalsPageState extends State<VitalsPage> {
     });
   }
 
-  // ── Firestore listener: sleepSessions/{patientId}/windows ────
   void _listenToWindows() {
     _windowsSub = FirebaseFirestore.instance
         .collection('sleepSessions')
@@ -119,14 +117,12 @@ class _VitalsPageState extends State<VitalsPage> {
         .listen((snap) {
       if (!mounted) return;
 
-      // Reverse so oldest is index 0 (left side of chart)
       final windows = snap.docs
           .map((d) => d.data())
           .toList()
           .reversed
           .toList();
 
-      // Build FlSpots for micro-movement line chart
       final spots = <FlSpot>[];
       for (int i = 0; i < windows.length; i++) {
         final val = windows[i]['microMovementCount'];
@@ -143,7 +139,6 @@ class _VitalsPageState extends State<VitalsPage> {
     });
   }
 
-  // ── State helpers ─────────────────────────────────────────────
   String _labelForState(String state) => switch (state) {
     'OFF_BED'       => 'OFF BED',
     'ON_BED_STILL'  => 'STILL',
@@ -181,7 +176,6 @@ class _VitalsPageState extends State<VitalsPage> {
     _           => 'UNKNOWN',
   };
 
-  // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -191,20 +185,15 @@ class _VitalsPageState extends State<VitalsPage> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             children: [
-              // Alert banners
               if (_isUnresponsive)
                 _alertBanner('🔴 EMERGENCY — Patient Unresponsive!', Colors.red),
               if (_isHypersomnia && !_isUnresponsive)
                 _alertBanner('🟡 HYPERSOMNIA — In bed over 13 hours', Colors.orange),
 
               const SizedBox(height: 12),
-
               _buildBlobChain(),
-
               const SizedBox(height: 32),
-
               _buildBarGraphSection(),
-
               const SizedBox(height: 32),
             ],
           ),
@@ -219,7 +208,6 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Alert banner ──────────────────────────────────────────────
   Widget _alertBanner(String message, Color color) {
     return Container(
       width: double.infinity,
@@ -239,7 +227,6 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Blob chain ────────────────────────────────────────────────
   Widget _buildBlobChain() {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
@@ -248,10 +235,10 @@ class _VitalsPageState extends State<VitalsPage> {
       final double h3 = w * (81 / 364);
       final double h4 = w * (151 / 350);
 
-      final double topVelo   = 0;
-      final double topStatus = h1 - _overlapVeloStatus;
-      final double topPocket = topStatus + h2 - _overlapStatusPocket;
-      final double topVibra  = topPocket + h3 - _overlapPocketVibra;
+      final double topVelo     = 0;
+      final double topStatus   = h1 - _overlapVeloStatus;
+      final double topPocket   = topStatus + h2 - _overlapStatusPocket;
+      final double topVibra    = topPocket + h3 - _overlapPocketVibra;
       final double totalHeight = topVibra + h4;
 
       return SizedBox(
@@ -363,7 +350,6 @@ class _VitalsPageState extends State<VitalsPage> {
     });
   }
 
-  // ── Line chart — real micro-movement data ─────────────────────
   Widget _buildChart() {
     final spots = _microMovementSpots.isNotEmpty
         ? _microMovementSpots
@@ -403,7 +389,6 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Bar graph section ─────────────────────────────────────────
   Widget _buildBarGraphSection() {
     if (_windowHistory.isEmpty) {
       return const Center(
@@ -451,7 +436,6 @@ class _VitalsPageState extends State<VitalsPage> {
           barColor: Colors.orangeAccent,
         ),
 
-        // State colour timeline
         const SizedBox(height: 8),
         const Text(
           'STATE TIMELINE',
@@ -483,7 +467,6 @@ class _VitalsPageState extends State<VitalsPage> {
         ),
         const SizedBox(height: 8),
 
-        // Legend
         Wrap(
           spacing: 12, runSpacing: 6,
           children: [
@@ -499,7 +482,6 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Single bar graph ──────────────────────────────────────────
   Widget _buildBarGraph({
     required String title,
     required String field,
@@ -526,7 +508,7 @@ class _VitalsPageState extends State<VitalsPage> {
               if (val is int)    raw = val.toDouble();
               if (val is double) raw = val;
 
-              final barH = (raw / maxValue * 80).clamp(2.0, 80.0);
+              final barH  = (raw / maxValue * 80).clamp(2.0, 80.0);
               final label = raw >= 1000
                   ? '${(raw / 1000).toStringAsFixed(1)}k'
                   : raw.toStringAsFixed(0);
@@ -565,7 +547,6 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Legend dot ────────────────────────────────────────────────
   Widget _legendDot(String label, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
