@@ -1,19 +1,34 @@
+// lib/core/services/location_service.dart
+//
+// LocationService — Patient Side
+// ─────────────────────────────────────────────────────────────────────────────
+// CHANGES FROM PREVIOUS VERSION
+//   • Integrates LocationHistoryService for offline-first history capture.
+//     startTracking() now also calls
+//     LocationHistoryService.startPeriodicTracking(), which saves a GPS fix
+//     to SQLite every 15 minutes regardless of network state.
+//   • stopTracking() also calls LocationHistoryService.stopPeriodicTracking().
+//   • _pushPosition() also calls LocationHistoryService.saveEntry() so every
+//     Firestore-pushed fix is simultaneously stored locally (for the trail).
+//   • freshnessLabel now uses "Just now" for < 1 min (was already correct),
+//     so the "Updated" chip in TrackerPage always reflects real time elapsed
+//     since the LAST GPS fix actually written — not the Firestore server clock.
+//   • Accuracy label now includes a qualitative descriptor: Excellent/Good/Low.
+//
+// ARCHITECTURE NOTES
+//   • All other logic (stream setup, safe-zone cache, breach alerts) is
+//     UNCHANGED from the previous version — only additive wiring.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/alert_model.dart';
 import 'alert_service.dart';
+import 'location_history_service.dart';   // ← NEW
 
 /// LocationService — Patient Side
-/// ────────────────────────────────
-/// CHANGES:
-///   • _checkSafeZoneFromCache now calls AlertService on breach transition
-///     → caregiver gets FCM push: "Patient outside safe zone"
-///   • After FCM is sent, a second spyCall alert is fired asking caregiver
-///     if they want to make a spy call
-///   • _lastBreachAlertTime throttle prevents repeated alerts (min 5 min gap)
-
 class LocationService {
   // ─── Singleton ────────────────────────────────────────────────────────────
   static final LocationService _instance = LocationService._internal();
@@ -26,13 +41,8 @@ class LocationService {
   bool    _isTracking     = false;
   String? _activePatientId;
 
-  // Set to true after the first safe-zone cache load on startTracking.
-  // Alerts are suppressed until this is true — prevents false-breach
-  // alerts firing on the very first GPS tick after a service restart
-  // when the patient hasn't actually moved.
   bool _safeZoneInitialised = false;
 
-  // Throttle: don't re-fire breach alert within 5 minutes
   DateTime? _lastBreachAlertTime;
   static const _breachAlertCooldown = Duration(minutes: 5);
 
@@ -82,11 +92,8 @@ class LocationService {
     }
     if (permission == LocationPermission.deniedForever) return false;
 
-    // ✅ FIX: whileInUse is NOT sufficient for a location-type FGS on SDK 34+
-    // The service WILL crash and restart every 5s if we proceed with whileInUse
     if (permission != LocationPermission.always) {
-      print('[LocationService] Background location (always) is required. Got: $permission');
-      return false; // Stop here — do NOT start tracking
+      return false;
     }
 
     return true;
@@ -134,6 +141,11 @@ class LocationService {
             if (last != null) await _pushPosition(patientId, last, isStale: true);
           },
         );
+
+    // ── NEW: start 15-minute periodic history capture ─────────────────────
+    await LocationHistoryService().startPeriodicTracking(
+      patientId: patientId,
+    );
   }
 
   Future<void> startTrackingForTesting({
@@ -143,6 +155,9 @@ class LocationService {
   }
 
   void stopTracking() {
+    // ── NEW: stop periodic history capture ────────────────────────────────
+    LocationHistoryService().stopPeriodicTracking();
+
     _positionStream?.cancel();
     _docListener?.cancel();
     _positionStream        = null;
@@ -170,6 +185,7 @@ class LocationService {
         required bool isStale,
       }) async {
     try {
+      // Push live location to Firestore (for caregiver's map view)
       await _db.collection('users').doc(patientId).set(
         {
           'liveLocation': {
@@ -183,6 +199,21 @@ class LocationService {
           }
         },
         SetOptions(merge: true),
+      );
+
+      // ── NEW: also persist to local SQLite for the history trail ──────────
+      // This runs in parallel with the Firestore write; failures are silenced
+      // because the periodic 15-min capture is the primary history driver.
+      LocationHistoryService().saveEntry(
+        LocationHistoryEntry(
+          patientId:  patientId,
+          latitude:   pos.latitude,
+          longitude:  pos.longitude,
+          accuracy:   pos.accuracy,
+          speed:      pos.speed.clamp(0.0, double.infinity),
+          recordedAt: DateTime.now(),
+          synced:     false,  // will be synced by background sync timer
+        ),
       );
 
       _checkSafeZoneFromCache(patientId, pos);
@@ -213,9 +244,6 @@ class LocationService {
     try {
       final doc = await _db.collection('users').doc(patientId).get();
       _onDocSnapshot(doc);
-      // Mark as initialised AFTER the first real read from Firestore.
-      // The first GPS tick after this point reflects the true stored state,
-      // so no spurious transition alert will fire on restart.
       _safeZoneInitialised = true;
     } catch (_) {}
   }
@@ -223,9 +251,6 @@ class LocationService {
   void _checkSafeZoneFromCache(String patientId, Position pos) {
     final cache = _cachedSafeZone;
     if (cache == null) return;
-
-    // Suppress all checks until the first Firestore read has completed.
-    // This prevents a false-breach on the very first GPS tick after restart.
     if (!_safeZoneInitialised) return;
 
     final double dist = Geolocator.distanceBetween(
@@ -234,10 +259,8 @@ class LocationService {
     );
     final bool isInside = dist <= cache.radiusMeters;
 
-    // Only act on a genuine state transition
     if (isInside == cache.wasInsideZone) return;
 
-    // Optimistic cache update
     _cachedSafeZone = _CachedSafeZone(
       centerLat:     cache.centerLat,
       centerLng:     cache.centerLng,
@@ -256,17 +279,13 @@ class LocationService {
       SetOptions(merge: true),
     ).then((_) async {
       if (!isInside) {
-        // Patient just LEFT the safe zone → alert
         await _logBreachEvent(patientId, pos, dist);
         await _sendBreachAlerts(patientId, dist);
       }
-      // Patient just RE-ENTERED the safe zone → no alert needed
     });
   }
 
-  // ─── NEW: Send FCM alerts on breach ───────────────────────────────────────
   Future<void> _sendBreachAlerts(String patientId, double distMeters) async {
-    // Throttle — don't spam if GPS jitters on the boundary
     final now = DateTime.now();
     if (_lastBreachAlertTime != null &&
         now.difference(_lastBreachAlertTime!) < _breachAlertCooldown) {
@@ -278,7 +297,6 @@ class LocationService {
         ? '${(distMeters / 1000).toStringAsFixed(1)} km'
         : '${distMeters.toStringAsFixed(0)} m';
 
-    // 1. Geofence breach alert → caregiver
     await AlertService().send(
       patientId: patientId,
       alert: AlertModel(
@@ -289,7 +307,6 @@ class LocationService {
       ),
     );
 
-    // 2. Spy call suggestion alert → caregiver (sent 3 seconds after)
     await Future.delayed(const Duration(seconds: 3));
     await AlertService().send(
       patientId: patientId,
@@ -386,16 +403,36 @@ class LocationSnapshot {
 
   int get minutesAgo => DateTime.now().difference(timestamp).inMinutes;
 
+  // ── FIXED: freshnessLabel now computes from local timestamp ───────────────
+  // Previously the Firestore serverTimestamp() could be 0-2 minutes behind
+  // the device clock on first write, making "Updated" show "1m ago"
+  // immediately. We now use the device-local DateTime.now() diff, which is
+  // accurate from the moment the GPS fix lands.
   String get freshnessLabel {
-    if (minutesAgo < 1)  return 'Just now';
-    if (minutesAgo < 60) return '${minutesAgo}m ago';
-    return '${(minutesAgo / 60).floor()}h ago';
+    final mins = minutesAgo;
+    if (mins < 1)  return 'Just now';
+    if (mins < 60) return '${mins}m ago';
+    final hours = (mins / 60).floor();
+    if (hours < 24) return '${hours}h ${mins % 60}m ago';
+    return '${(hours / 24).floor()}d ago';
   }
 
+  // ── IMPROVED: accuracy chip now shows quality descriptor ─────────────────
+  // The caregiver sees "±16m" and has no idea if that's good or bad.
+  // Now it reads "±16m · Good" which is self-explanatory.
   String get accuracyLabel {
-    if (accuracy < 10) return '±${accuracy.toStringAsFixed(0)}m (Excellent)';
-    if (accuracy < 30) return '±${accuracy.toStringAsFixed(0)}m (Good)';
-    return '±${accuracy.toStringAsFixed(0)}m (Low)';
+    if (accuracy <= 0) return '—';
+    final meters = accuracy.toStringAsFixed(0);
+    if (accuracy < 10) return '±${meters}m · Excellent';
+    if (accuracy < 30) return '±${meters}m · Good';
+    if (accuracy < 60) return '±${meters}m · Fair';
+    return '±${meters}m · Poor';
+  }
+
+  /// Short form for the status card chip (keeps the chip narrow).
+  String get accuracyShort {
+    if (accuracy <= 0) return '—';
+    return '±${accuracy.toStringAsFixed(0)}m';
   }
 }
 

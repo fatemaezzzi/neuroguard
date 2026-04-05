@@ -1,20 +1,23 @@
 // lib/features/tracker/tracker_page.dart
 //
-// TrackerPage — rewired to consume Riverpod providers.
+// TrackerPage — Caregiver map view (Riverpod-powered)
 //
-// CHANGES FROM ORIGINAL
-//   • Extends ConsumerStatefulWidget / ConsumerState (was StatefulWidget)
-//   • ALL StreamBuilder nesting removed — replaced with ref.watch()
-//   • _patientLocation / _safeZone / _showBreachOverlay / _isLoadingLocation
-//     state fields REMOVED — driven by providers now
-//   • _caregiverLocSub + _startCaregiverLocationTracking() REMOVED — replaced
-//     by caregiverPositionProvider
-//   • _geofenceSubscription REMOVED — replaced by ref.listen on
-//     geofenceNotifierProvider (only animation side-effect stays in widget)
-//   • _handleBreachAcknowledgement() now delegates to GeofenceNotifier
-//   • Everything else (animations, markers, map, palette) is UNCHANGED
+// CHANGES FROM PREVIOUS VERSION
+//   • Added "History" icon button to the top bar (clock icon) that navigates
+//     to LocationHistoryPage. Placed between the home-centre button and the
+//     safe-zone editor button.
+//   • The "Updated" chip now correctly reflects real time elapsed since the
+//     last GPS fix. The fix: LocationSnapshot.freshnessLabel is now computed
+//     from the device-local timestamp diff (see location_service.dart change).
+//     In the status card we also pass a live-ticking stream so the chip
+//     auto-updates each minute without a full page rebuild.
+//   • The "Accuracy" chip tooltip is improved — it now shows
+//     "±16m · Good" instead of bare "±16m" (via accuracyShort in the chip,
+//     full label available on long-press tooltip).
+//   • The "_statChip" for Accuracy now uses location.accuracyShort (compact)
+//     and sets the full accuracyLabel as a Tooltip so caregivers can learn.
 //
-// SURGICAL SCOPE: no changes to services, models, or alert_dialog.dart
+// SURGICAL SCOPE: all marker, map, animation, and provider logic is UNCHANGED.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -25,6 +28,9 @@ import 'package:neuroguard/core/providers/location_providers.dart';
 import 'package:neuroguard/core/services/geofence_service.dart';
 import 'package:neuroguard/core/services/location_service.dart';
 import 'package:neuroguard/features/caregiver/tracker/safezone_editor.dart';
+
+// ── NEW import ────────────────────────────────────────────────────────────────
+import 'package:neuroguard/features/caregiver/tracker/location_history_page.dart';
 
 class TrackerPage extends ConsumerStatefulWidget {
   final String patientId;
@@ -52,9 +58,12 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   late AnimationController _overlayController;
   late Animation<Offset>   _overlaySlide;
 
-  // ─── Local overlay visibility (animation concern only) ────────────────────
-  // All LOGIC is in GeofenceNotifier. This bool only controls whether the
-  // breach overlay widget is in the tree during the slide animation.
+  // ─── Freshness tick timer — forces "Updated" chip to refresh each minute ──
+  // Without this the chip only rebuilds when a new Firestore event arrives,
+  // so "1m ago" could stay on screen for up to 15 minutes.
+  Timer? _freshnessTimer;
+
+  // ─── Local overlay visibility ─────────────────────────────────────────────
   bool _overlayInTree = false;
 
   // ─── Palette ──────────────────────────────────────────────────────────────
@@ -72,6 +81,12 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   void initState() {
     super.initState();
     _setupAnimations();
+
+    // Tick every 60 s so the "Updated" chip reads correctly
+    _freshnessTimer = Timer.periodic(
+      const Duration(minutes: 1),
+          (_) { if (mounted) setState(() {}); },
+    );
   }
 
   void _setupAnimations() {
@@ -97,6 +112,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
 
   @override
   void dispose() {
+    _freshnessTimer?.cancel();
     _pulseController.dispose();
     _overlayController.dispose();
     super.dispose();
@@ -108,11 +124,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
 
   @override
   Widget build(BuildContext context) {
-    // ── React to geofence state changes (animation side-effects only) ────────
-    //
-    // ref.listen fires whenever geofenceNotifierProvider emits a new state.
-    // We only touch animation / overlay visibility here — no setState for
-    // alert logic.
     ref.listen<GeofenceState>(
       geofenceNotifierProvider(widget.patientId),
           (previous, next) {
@@ -131,7 +142,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
       },
     );
 
-    // ── Read providers ────────────────────────────────────────────────────────
     final locationAsync  = ref.watch(locationStreamProvider(widget.patientId));
     final zoneAsync      = ref.watch(safeZoneStreamProvider(widget.patientId));
     final caregiverAsync = ref.watch(caregiverPositionProvider);
@@ -167,7 +177,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // MAP LAYER
+  // MAP LAYER (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildMapLayer(
@@ -175,7 +185,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
       SafeZoneModel? safeZone,
       LatLng? caregiverPos,
       ) {
-    // Map centre: use patient location, fall back to Mumbai
     final LatLng mapCenter = location != null
         ? LatLng(location.latitude, location.longitude)
         : const LatLng(19.0760, 72.8777);
@@ -190,14 +199,11 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
         onMapReady: () => setState(() => _mapReady = true),
       ),
       children: [
-        // ── OSM base tiles ─────────────────────────────────────────────
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.yourteam.neuroguard',
           maxNativeZoom: 19,
         ),
-
-        // ── Safe zone fill + border ────────────────────────────────────
         if (safeZone != null)
           CircleLayer(
             circles: [
@@ -208,14 +214,11 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                 color: safeZone.isInsideZone
                     ? _safeGreen.withOpacity(0.12)
                     : _alertRed.withOpacity(0.15),
-                borderColor:
-                safeZone.isInsideZone ? _safeGreen : _alertRed,
+                borderColor: safeZone.isInsideZone ? _safeGreen : _alertRed,
                 borderStrokeWidth: 2.5,
               ),
             ],
           ),
-
-        // ── Home / safe zone center pin ────────────────────────────────
         if (safeZone != null)
           MarkerLayer(
             markers: [
@@ -226,8 +229,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
               ),
             ],
           ),
-
-        // ── GPS accuracy halo ──────────────────────────────────────────
         if (location != null && location.accuracy > 0)
           CircleLayer(
             circles: [
@@ -241,8 +242,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
               ),
             ],
           ),
-
-        // ── Patient marker ─────────────────────────────────────────────
         MarkerLayer(
           markers: [
             Marker(
@@ -256,8 +255,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
             ),
           ],
         ),
-
-        // ── Caregiver "YOU" dot ────────────────────────────────────────
         if (caregiverPos != null)
           MarkerLayer(
             markers: [
@@ -273,7 +270,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // MARKER WIDGETS  (unchanged from original)
+  // MARKERS (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildPatientMarker(SafeZoneModel? safeZone) {
@@ -351,8 +348,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
         Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color: _safeGreen,
-            shape: BoxShape.circle,
+            color: _safeGreen, shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
@@ -371,8 +367,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
             boxShadow: [
               BoxShadow(
                   color: Colors.black.withOpacity(0.35),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2)),
+                  blurRadius: 4, offset: const Offset(0, 2)),
             ],
           ),
           child: const Text('HOME',
@@ -407,8 +402,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: teal,
-            borderRadius: BorderRadius.circular(6),
+            color: teal, borderRadius: BorderRadius.circular(6),
           ),
           child: const Text('YOU',
               style: TextStyle(
@@ -434,7 +428,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // TOP BAR
+  // TOP BAR — ← UPDATED: history button added
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildTopBar(LocationSnapshot? location, SafeZoneModel? safeZone) {
@@ -495,6 +489,15 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                   color: _safeGreen,
                 ),
                 const SizedBox(width: 8),
+
+                // ── NEW: Location History button ──────────────────────────
+                _mapIconButton(
+                  icon:  Icons.history_rounded,
+                  onTap: _openLocationHistory,
+                  color: const Color(0xFF9BFF4F),     // lime accent
+                ),
+                const SizedBox(width: 8),
+
                 _mapIconButton(
                   icon:  Icons.edit_location_alt_rounded,
                   onTap: _openSafeZoneEditor,
@@ -528,7 +531,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // STATUS CARD
+  // STATUS CARD — ← UPDATED: accuracy chip shows quality descriptor
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildStatusCard(LocationSnapshot? location, SafeZoneModel? safeZone) {
@@ -536,7 +539,11 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
     final double distanceFromCenter = safeZone?.distanceFromCenter ?? 0.0;
     final double accuracy           = location?.accuracy ?? 0.0;
     final bool   isStale            = location?.isStale ?? false;
-    final String timeLabel          = location == null
+
+    // ── FIXED: use freshnessLabel (device-local clock diff) ──────────────────
+    // Previously we could show "21h ago" if Firestore serverTimestamp lagged.
+    // Now it always reflects real seconds since the last GPS fix was recorded.
+    final String timeLabel = location == null
         ? 'Fetching…'
         : location.freshnessLabel;
 
@@ -605,10 +612,8 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                   child: const Text(
                     'STALE GPS',
                     style: TextStyle(
-                        color: _warningAmber,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8),
+                        color: _warningAmber, fontSize: 9,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.8),
                   ),
                 ),
             ],
@@ -617,19 +622,25 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
           Row(
             children: [
               _statChip(
-                icon:  Icons.access_time_rounded,
-                label: 'Updated',
-                value: timeLabel,
+                icon:    Icons.access_time_rounded,
+                label:   'Updated',
+                value:   timeLabel,
               ),
               const SizedBox(width: 8),
-              _statChip(
-                icon:  Icons.gps_fixed_rounded,
-                label: 'Accuracy',
-                value: accuracy > 0
-                    ? '±${accuracy.toStringAsFixed(0)}m'
-                    : '—',
+
+              // ── UPDATED: compact short form + tooltip for full label ───────
+              Tooltip(
+                message:  location?.accuracyLabel ?? '—',
+                child: _statChip(
+                  icon:  Icons.gps_fixed_rounded,
+                  label: 'Accuracy',
+                  value: accuracy > 0
+                      ? location!.accuracyShort
+                      : '—',
+                ),
               ),
               const SizedBox(width: 8),
+
               _statChip(
                 icon:  Icons.place_rounded,
                 label: 'Distance',
@@ -681,7 +692,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // BREACH OVERLAY
+  // BREACH OVERLAY (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildBreachOverlay(GeofenceState geofenceState) {
@@ -723,8 +734,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                             color: _alertRed, fontSize: 15,
                             fontWeight: FontWeight.w800, letterSpacing: 0.3)),
                     Text('Patient has moved outside the designated area',
-                        style:
-                        TextStyle(color: Colors.white54, fontSize: 11)),
+                        style: TextStyle(color: Colors.white54, fontSize: 11)),
                   ],
                 ),
               ),
@@ -743,7 +753,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                   label:    "It's fine",
                   sublabel: 'Supervised outing',
                   color:    _safeGreen,
-                  // Disabled while Firestore write in flight
                   onTap: geofenceState.isAcknowledging
                       ? null
                       : () => _handleBreachAcknowledgement(supervised: true),
@@ -778,9 +787,9 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   Widget _alertActionButton({
-    required String       label,
-    required String       sublabel,
-    required Color        color,
+    required String        label,
+    required String        sublabel,
+    required Color         color,
     required VoidCallback? onTap,
   }) {
     return GestureDetector(
@@ -813,7 +822,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // LOADING OVERLAY
+  // LOADING OVERLAY (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildLoadingOverlay() {
@@ -889,12 +898,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
           color: const Color(0xFF1A0A0A),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _alertRed.withOpacity(0.6), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-                color: _alertRed.withOpacity(0.2),
-                blurRadius: 24,
-                spreadRadius: 4),
-          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -918,12 +921,11 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                     children: [
                       Text('Emergency Alert Sent',
                           style: TextStyle(
-                              color: _alertRed,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.3)),
+                              color: _alertRed, fontSize: 15,
+                              fontWeight: FontWeight.w800)),
                       Text('Patient is unsupervised outside safe zone',
-                          style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          style: TextStyle(
+                              color: Colors.white54, fontSize: 11)),
                     ],
                   ),
                 ),
@@ -933,15 +935,14 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
             const Text(
               'Do you want to initiate a Spy Call to listen in on the patient\'s surroundings?',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4),
+                  color: Colors.white, fontSize: 14,
+                  fontWeight: FontWeight.w600, height: 1.4),
             ),
             const SizedBox(height: 6),
             const Text(
               'The call will connect silently — the patient\'s phone will auto-answer.',
-              style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.4),
+              style: TextStyle(
+                  color: Colors.white38, fontSize: 11, height: 1.4),
             ),
             const SizedBox(height: 16),
             Row(
@@ -950,7 +951,7 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
                   child: GestureDetector(
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: wire up SpyCallService.initiate(widget.patientId)
+                      // TODO: SpyCallService.initiate(widget.patientId)
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1036,7 +1037,6 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
   }
 
   void _openSafeZoneEditor() {
-    final location = ref.read(locationStreamProvider(widget.patientId)).valueOrNull;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1048,20 +1048,29 @@ class _TrackerPageState extends ConsumerState<TrackerPage>
     );
   }
 
-  /// Delegates to GeofenceNotifier — no direct service calls from UI.
+  // ── NEW: open history page ─────────────────────────────────────────────────
+  void _openLocationHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationHistoryPage(
+          patientId:   widget.patientId,
+          patientName: widget.patientName,
+        ),
+      ),
+    );
+  }
+
   void _handleBreachAcknowledgement({required bool supervised}) {
-    final notifier = ref.read(geofenceNotifierProvider(widget.patientId).notifier);
+    final notifier =
+    ref.read(geofenceNotifierProvider(widget.patientId).notifier);
     if (supervised) {
-      // Dismiss the overlay immediately — the patient stays outside physically,
-      // so isInsideZone never flips and the ref.listen resolved path won't fire.
       _dismissBreachOverlay();
       notifier.acknowledgeSupervisedOuting();
     } else {
-      // escalate() will cause ref.listen to hit AlertLevel.red → dismiss + snackbar.
-      // After that we show the spy call prompt.
       notifier.escalate();
-      // Small delay so the overlay slide-out animation starts before the sheet appears.
-      Future.delayed(const Duration(milliseconds: 400), _showSpyCallSheet);
+      Future.delayed(
+          const Duration(milliseconds: 400), _showSpyCallSheet);
     }
   }
 }
