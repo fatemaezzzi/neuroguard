@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:neuroguard/features/caregiver/caregiver_home.dart';
@@ -13,9 +12,16 @@ import 'package:neuroguard/features/shared/settings_screen.dart';
 class CogniTestHistoryScreen extends StatefulWidget {
   final String callerRole;
 
+  /// The UID of the patient whose history to display.
+  /// - Caregiver path: passed in from ReportsPage (widget.patientId).
+  /// - Patient path: pass FirebaseAuth.instance.currentUser!.uid at the call site,
+  ///   or default to the logged-in user if omitted via the factory below.
+  final String patientId;
+
   const CogniTestHistoryScreen({
     super.key,
     this.callerRole = 'caregiver',
+    required this.patientId,
   });
 
   @override
@@ -24,7 +30,10 @@ class CogniTestHistoryScreen extends StatefulWidget {
 }
 
 class _CogniTestHistoryScreenState extends State<CogniTestHistoryScreen> {
-  final String _patientId = FirebaseAuth.instance.currentUser?.uid ?? 'patient_01';
+  // patientId is now passed in via the constructor — no FirebaseAuth lookup needed here.
+  // Caregiver → ReportsPage passes the selected patient's UID.
+  // Patient   → call site passes FirebaseAuth.instance.currentUser!.uid.
+  String get _patientId => widget.patientId;
 
   final _service = CogniTestService();
   bool _showMonthly = false;
