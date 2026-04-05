@@ -189,17 +189,9 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                       'LOCATION HISTORY',
                       style: TextStyle(
                         color: _lime,
-                        fontSize: 12,
+                        fontSize: 24,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.5,
-                      ),
-                    ),
-                    Text(
-                      widget.patientName,
-                      style: const TextStyle(
-                        color: _white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -231,7 +223,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
   Widget _buildFilterRow() {
     return Container(
       color: _card,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -258,7 +250,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                     range.label,
                     style: TextStyle(
                       color: selected ? Colors.black : _grey,
-                      fontSize: 12,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.3,
                     ),
@@ -287,7 +279,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
               'Offline — showing locally cached data',
               style: TextStyle(
                 color: Color(0xFFFFB84D),
-                fontSize: 11,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -309,7 +301,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
         labelColor: _lime,
         unselectedLabelColor: _grey,
         labelStyle: const TextStyle(
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: FontWeight.w900,
           letterSpacing: 0.8,
         ),
@@ -497,7 +489,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                   _fullFmt.format(entry.recordedAt),
                   style: const TextStyle(
                       color: _white,
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
@@ -594,7 +586,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                       day.toUpperCase(),
                       style: const TextStyle(
                         color: Colors.black,
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
                       ),
@@ -710,7 +702,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                               _timeFmt.format(entry.recordedAt),
                               style: TextStyle(
                                 color: isHighlighted ? _lime : _white,
-                                fontSize: 13,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -803,7 +795,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
           Text('Loading history…',
               style: TextStyle(
                   color: _grey,
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500)),
         ],
       ),
@@ -837,17 +829,17 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _white,
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
                 height: 1.35,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'History is recorded every 15 minutes\nwhile the app is running',
+              'History is recorded every 15 minutes\nautomatically in the background',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: _grey, fontSize: 12, height: 1.5),
+                  color: _grey, fontSize: 16, height: 1.5),
             ),
             const SizedBox(height: 28),
             GestureDetector(
@@ -863,7 +855,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                   'RETRY',
                   style: TextStyle(
                     color: Colors.black,
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.4,
                   ),

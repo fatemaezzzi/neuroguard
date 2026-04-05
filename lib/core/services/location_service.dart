@@ -142,10 +142,10 @@ class LocationService {
           },
         );
 
-    // ── NEW: start 15-minute periodic history capture ─────────────────────
-    await LocationHistoryService().startPeriodicTracking(
-      patientId: patientId,
-    );
+    // NOTE: location history capture is driven by BackgroundTaskHandler's
+    // tick counter — NOT by a Timer.periodic here. Starting a timer in this
+    // isolate too would create a double-capture race condition because each
+    // Dart isolate gets its own separate LocationHistoryService instance.
   }
 
   Future<void> startTrackingForTesting({
@@ -155,9 +155,6 @@ class LocationService {
   }
 
   void stopTracking() {
-    // ── NEW: stop periodic history capture ────────────────────────────────
-    LocationHistoryService().stopPeriodicTracking();
-
     _positionStream?.cancel();
     _docListener?.cancel();
     _positionStream        = null;

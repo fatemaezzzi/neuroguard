@@ -170,9 +170,10 @@ class _CogniTestScreenState extends State<CogniTestScreen> {
                           : () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                          const CogniTestHistoryScreen(
-                              callerRole: 'patient'),
+                          builder: (_) => CogniTestHistoryScreen(
+                            callerRole: 'patient',
+                            patientId: _patientId!,
+                          ),
                         ),
                       ),
                       child: Stack(

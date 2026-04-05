@@ -6,16 +6,22 @@
 // ARCHITECTURE
 //   • All GPS fixes are written immediately to SQLite (sqflite) on the
 //     patient's device — no network required.
-//   • A background sync job runs whenever connectivity is available and
-//     pushes unsynced rows into Firestore  users/{id}/locationHistory.
-//   • The caregiver's History page reads Firestore for remote history, but
-//     falls back to the local SQLite when offline (shared through this service).
+//   • The background isolate (BackgroundTaskHandler) owns the capture + sync
+//     cadence via its own tick counter. LocationService.startTracking() no
+//     longer starts a Timer.periodic here — that caused a double-capture race
+//     condition between the two isolates.
+//   • captureAndSave() and syncNow() are called directly by the background
+//     isolate on its own schedule.
+//   • The caregiver's History page reads Firestore for remote history.
+//     Local SQLite is only used for the patient's own device (offline fallback).
 //
-// PERIODIC TRACKING (15-minute cadence)
-//   • startPeriodicTracking() sets up a 15-minute Timer.periodic that calls
-//     _captureAndSave() regardless of whether the patient has moved.
-//     This guarantees at least one fix per 15-minute window even if the
-//     Geolocator stream is paused or the distance filter is active.
+// WHY Timer.periodic WAS REMOVED
+//   flutter_foreground_task runs in a separate Dart isolate. Singletons are
+//   NOT shared across isolates — each isolate gets its own instance.
+//   Having Timer.periodic in the main isolate AND a tick-based capture in the
+//   background isolate caused two independent capture loops with separate
+//   SQLite connections, leading to race conditions and missed Firestore syncs.
+//   The background isolate is now the sole owner of the capture cadence.
 //
 // DATABASE SCHEMA
 //   Table: location_history
@@ -32,7 +38,6 @@
 // DEPENDENCIES (add to pubspec.yaml if not already present):
 //   sqflite: ^2.3.3
 //   path: ^1.9.0
-//   connectivity_plus: ^6.0.3
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -117,7 +122,8 @@ class LocationHistoryEntry {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class LocationHistoryService {
-  // Singleton
+  // Singleton — NOTE: only meaningful within a single isolate.
+  // The background isolate gets its own separate instance.
   static final LocationHistoryService _instance =
   LocationHistoryService._internal();
   factory LocationHistoryService() => _instance;
@@ -125,21 +131,15 @@ class LocationHistoryService {
 
   // ── Config ────────────────────────────────────────────────────────────────
 
-  static const Duration _periodicInterval = Duration(minutes: 15);
+  /// Push at most this many unsynced rows per sync run (avoids huge batches).
+  static const int _syncBatchSize = 200;
 
   /// Keep at most this many rows locally (≈ 30 days at 15-min cadence).
   static const int _maxLocalRows = 2880;
 
-  /// Push at most this many unsynced rows per sync run (avoids huge batches).
-  static const int _syncBatchSize = 200;
-
   // ── State ─────────────────────────────────────────────────────────────────
 
-  Database?      _db;
-  Timer?         _periodicTimer;
-  Timer?         _syncTimer;
-  String?        _activePatientId;
-
+  Database? _db;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -166,7 +166,6 @@ class LocationHistoryService {
             synced      INTEGER DEFAULT 0
           )
         ''');
-        // Index for fast patient queries
         await db.execute(
           'CREATE INDEX idx_patient_time ON location_history(patient_id, recorded_at DESC)',
         );
@@ -176,44 +175,12 @@ class LocationHistoryService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // START / STOP
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /// Call this once from LocationService.startTracking().
-  /// Begins the 15-minute periodic capture loop.
-  Future<void> startPeriodicTracking({required String patientId}) async {
-    if (_activePatientId == patientId && _periodicTimer != null) return;
-
-    stopPeriodicTracking(); // cancel any previous patient session
-    _activePatientId = patientId;
-
-    // Capture immediately, then every 15 minutes
-    await _captureAndSave(patientId);
-
-    _periodicTimer = Timer.periodic(_periodicInterval, (_) async {
-      await _captureAndSave(patientId);
-    });
-
-    // Attempt a Firestore sync every 5 minutes (best-effort)
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
-      await _syncToFirestore(patientId);
-    });
-  }
-
-  void stopPeriodicTracking() {
-    _periodicTimer?.cancel();
-    _syncTimer?.cancel();
-    _periodicTimer    = null;
-    _syncTimer        = null;
-    _activePatientId  = null;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // CAPTURE
+  // CAPTURE — called directly by BackgroundTaskHandler on its tick schedule
   // ─────────────────────────────────────────────────────────────────────────
 
   /// Gets current GPS position and saves to SQLite immediately.
-  Future<void> _captureAndSave(String patientId) async {
+  /// Called by BackgroundTaskHandler — NOT by a Timer.periodic anymore.
+  Future<void> captureAndSave(String patientId) async {
     try {
       Position? pos;
       try {
@@ -267,19 +234,18 @@ class LocationHistoryService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // READ — local SQLite
+  // READ — local SQLite (patient device only — not useful on caregiver side)
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Returns the most recent [limit] history entries from the local DB.
   Future<List<LocationHistoryEntry>> getLocalHistory({
     required String patientId,
-    int limit  = 96,          // default: last 24 hours at 15-min cadence
+    int limit  = 96,
     DateTime? from,
     DateTime? to,
   }) async {
     final db = await _getDb();
 
-    String where      = 'patient_id = ?';
+    String where       = 'patient_id = ?';
     List<dynamic> args = [patientId];
 
     if (from != null) {
@@ -293,21 +259,19 @@ class LocationHistoryService {
 
     final rows = await db.query(
       'location_history',
-      where:   where,
+      where:     where,
       whereArgs: args,
-      orderBy: 'recorded_at DESC',
-      limit:   limit,
+      orderBy:   'recorded_at DESC',
+      limit:     limit,
     );
 
     return rows.map(LocationHistoryEntry.fromSqlite).toList();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // READ — Firestore (caregiver side / when online)
+  // READ — Firestore (caregiver side — this is the primary read path)
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Fetches location history from Firestore for the given patient.
-  /// Used by the caregiver's HistoryPage when the device is online.
   Future<List<LocationHistoryEntry>> getRemoteHistory({
     required String patientId,
     int limit = 96,
@@ -346,10 +310,11 @@ class LocationHistoryService {
 
   // ─────────────────────────────────────────────────────────────────────────
   // SYNC — SQLite → Firestore
+  // Called by BackgroundTaskHandler after every captureAndSave()
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Pushes unsynced local rows to Firestore in batches.
-  /// Marks each successfully pushed row as synced in SQLite.
+  Future<void> syncNow(String patientId) => _syncToFirestore(patientId);
+
   Future<void> _syncToFirestore(String patientId) async {
     try {
       final db = await _getDb();
@@ -366,7 +331,6 @@ class LocationHistoryService {
 
       final entries = rows.map(LocationHistoryEntry.fromSqlite).toList();
 
-      // Firestore batch write (max 500 ops per batch — well within limit here)
       final batch = _firestore.batch();
       final historyCol = _firestore
           .collection('users')
@@ -386,19 +350,15 @@ class LocationHistoryService {
         ids,
       );
     } catch (_) {
-      // No network or Firestore unavailable — will retry on next timer tick
+      // No network or Firestore unavailable — will retry on next call
     }
   }
-
-  /// Public method so caller can trigger a one-shot sync (e.g. on app resume).
-  Future<void> syncNow(String patientId) => _syncToFirestore(patientId);
 
   // ─────────────────────────────────────────────────────────────────────────
   // DISPOSE
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> dispose() async {
-    stopPeriodicTracking();
     await _db?.close();
     _db = null;
   }

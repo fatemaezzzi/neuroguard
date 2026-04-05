@@ -213,7 +213,9 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: BottomBlobRow(
-                  onReports: () => _go(context, const ReportsPage()),
+                  onReports: () => _loading
+                      ? () {}
+                      : _go(context, ReportsPage(patientId: _patientId)),
                   onAllAbout: () => _go(context, const AllAboutDementiaPage1()),
                 ),
               ),
