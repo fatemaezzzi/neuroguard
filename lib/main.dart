@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +19,7 @@ void main() async {
 
   await PermissionService.requestAllPermissions();
   await LocationService().initialise();
-  await SpyCallService.init();
+  await SpyCallService.init(); // initializes Agora engine
 
   runApp(
     const ProviderScope(
