@@ -88,7 +88,9 @@ class _CogniTestScreenState extends State<CogniTestScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => DrawingScreen(
-                              patientId: _patientId!),
+                            patientId: _patientId!,
+                            previousScore: _lastScore,
+                            previousTia: _lastTia,),
                         ),
                       ),
                       child: Stack(
