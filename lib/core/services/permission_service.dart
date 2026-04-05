@@ -6,10 +6,13 @@ class PermissionService {
 
   /// Call this once on app startup (e.g., in main.dart or splash screen).
   /// Each permission is only requested if it has not been granted yet.
+  /// Checks run in parallel — does NOT block startup when all are already granted.
   static Future<void> requestAllPermissions() async {
-    await _requestMicrophonePermission();
-    await _requestCameraPermission();
-    await _requestLocationPermission();
+    await Future.wait([
+      _requestMicrophonePermission(),
+      _requestCameraPermission(),
+      _requestLocationPermission(),
+    ]);
   }
 
   // ✅ NEW: typed check for use before starting FGS

@@ -51,9 +51,14 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
   @override
   void initState() {
     super.initState();
-    _loadNames();
-    _registerFcmToken();
-    _listenForegroundNotifications();
+    // Defer all async work to after the first frame so the UI paints
+    // immediately instead of blocking on Firestore + FCM token writes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadNames();
+      _registerFcmToken();
+      _listenForegroundNotifications();
+    });
   }
 
   // ── Load caregiver + patient names from Firestore ──────────────────────────

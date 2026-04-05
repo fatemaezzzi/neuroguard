@@ -38,7 +38,8 @@ class LocationService {
   // ─── Private State ────────────────────────────────────────────────────────
   StreamSubscription<Position>?         _positionStream;
   StreamSubscription<DocumentSnapshot>? _docListener;
-  bool    _isTracking     = false;
+  bool    _isTracking             = false;
+  bool    _notificationsInitialised = false;
   String? _activePatientId;
 
   bool _safeZoneInitialised = false;
@@ -65,6 +66,8 @@ class LocationService {
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
+    if (_notificationsInitialised) return;   // already done — skip entirely
+    _notificationsInitialised = true;
     await _initNotifications();
     await _requestPermissions();
   }
@@ -118,8 +121,12 @@ class LocationService {
     if (_isTracking && _activePatientId == patientId) return;
     if (_isTracking) stopTracking();
 
-    final hasPermission = await _requestPermissions();
-    if (!hasPermission) return;
+    // Only check permissions if we haven't confirmed them yet this session.
+    // Geolocator.checkPermission() is a binder call that adds ~80ms each time.
+    if (!_isTracking) {
+      final hasPermission = await _requestPermissions();
+      if (!hasPermission) return;
+    }
 
     _isTracking      = true;
     _activePatientId = patientId;

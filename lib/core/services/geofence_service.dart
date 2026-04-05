@@ -26,6 +26,7 @@ class GeofenceService {
   // ─── State ────────────────────────────────────────────────────────────────
   StreamSubscription<DocumentSnapshot>? _zoneListener;
   bool _wasInsideZone = true;
+  bool _notificationsInitialised = false;
   String? _currentPatientId;
   bool _supervisedCooldown = false;
   Timer? _repeatAlertTimer;
@@ -49,6 +50,8 @@ class GeofenceService {
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
+    if (_notificationsInitialised) return;   // singleton — run once only
+    _notificationsInitialised = true;
     await _setupNotificationChannel();
   }
 

@@ -69,7 +69,10 @@ class BackgroundTaskHandler extends TaskHandler {
 
   // Tick counter: onRepeatEvent fires every 15 s
   // Debug → 4 ticks = 1 min | Release → 60 ticks = 15 min
-  static const int _captureEveryNTicks = 60;
+  static const int _debugCaptureEveryNTicks   = 4;
+  static const int _releaseCaptureEveryNTicks = 60;
+  static int get _captureEveryNTicks =>
+      kDebugMode ? _debugCaptureEveryNTicks : _releaseCaptureEveryNTicks;
   int _ticksSinceCapture = 0;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -106,7 +109,8 @@ class BackgroundTaskHandler extends TaskHandler {
     // ── Normal: count ticks and capture+sync at threshold ──────────────────
     _ticksSinceCapture++;
     debugPrint(
-      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks (15 min interval)',
+      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks '
+          '(${kDebugMode ? "1 min" : "15 min"} interval)',
     );
 
     if (_ticksSinceCapture >= _captureEveryNTicks) {

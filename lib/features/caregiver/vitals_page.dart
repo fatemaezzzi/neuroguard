@@ -206,7 +206,10 @@ class _VitalsPageState extends State<VitalsPage> {
                 _alertBanner(context, '🟡 HYPERSOMNIA — In bed over 13 hours', Colors.orange),
 
               const SizedBox(height: 12),
-              _buildBlobChain(context),
+              Padding(
+                padding: EdgeInsets.zero,
+                child: _buildBlobChain(context),
+              ),
               const SizedBox(height: 32),
               _buildBarGraphSection(context),
               const SizedBox(height: 32),
@@ -292,14 +295,16 @@ class _VitalsPageState extends State<VitalsPage> {
         width: w,
         height: totalHeight,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
 
             // STATUS
             Positioned(
               top: topStatus, left: 0, right: 0, height: h2,
               child: Stack(children: [
-                Image.asset('assets/statussleeping.png', fit: BoxFit.fill),
+                ClipRect(
+                  child: Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
+                ),
                 Positioned.fill(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -340,7 +345,9 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topPocket, left: 0, right: 0, height: h3,
               child: Stack(children: [
-                Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
+                ClipRect(
+                  child: Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
+                ),
                 Positioned.fill(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -354,10 +361,8 @@ class _VitalsPageState extends State<VitalsPage> {
                               widget.patientId,
                             );
                           },
-                          child: Image.asset(
-                            'assets/arrow.png',
-                            width: 30, height: 30,
-                            color: const Color(0xFFCCFF00),
+                          child: ClipRect(
+                            child: Image.asset('assets/arrow.png', fit: BoxFit.fill),
                           ),
                         ),
                       ],
@@ -371,7 +376,9 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topVibra, left: 0, right: 0, height: h4,
               child: Stack(children: [
-                Image.asset('assets/lastvibrationtest.png', fit: BoxFit.fill),
+              ClipRect(
+              child: Image.asset('assets/lastvibrationtest.png', fit: BoxFit.fill),
+            ),
                 Positioned.fill(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -391,7 +398,9 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topVelo, left: 0, right: 0, height: h1,
               child: Stack(children: [
-                Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
+      ClipRect(
+      child: Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
+      ),
                 Positioned(
                   top: 18, left: 24,
                   child: Text(
