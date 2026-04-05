@@ -6,7 +6,9 @@ import 'package:neuroguard/features/patient/navigate_home_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
 import 'package:neuroguard/core/services/location_service.dart';
+import 'package:neuroguard/core/services/background_task_handler.dart';
 import 'package:neuroguard/features/shared/widgets/pocket_check_widget.dart';
+import 'package:neuroguard/main.dart' show activatePatientBackground, saveFcmToken;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:neuroguard/features/patient/spy_call_listener.dart';
 
@@ -81,14 +83,19 @@ class _PatientHomeState extends State<PatientHome> {
         // the Scaffold with PocketCheckInitializer, starting the service
         // on this (patient) device for the first and only time.
       });
-      LocationService().startTracking(patientId: uid);
+      // Persist patientId for background isolate + send to running service.
+      // This keeps LocationService + PocketCheckService alive even when the
+      // app is fully closed or the device reboots.
+      await activatePatientBackground(uid);
+      await saveFcmToken(uid);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _patientName = 'Friend';
         _patientId   = uid;
       });
-      LocationService().startTracking(patientId: uid);
+      await activatePatientBackground(uid);
+      await saveFcmToken(uid);
       debugPrint('PatientHome: failed to load user data — $e');
     }
   }

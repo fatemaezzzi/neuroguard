@@ -7,6 +7,10 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/features/caregiver/tracker/tracker_page.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 import 'package:neuroguard/core/services/auth_service.dart';
+import 'package:neuroguard/features/caregiver/medicine_reminders_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:neuroguard/main.dart';
 
 // =============================================================================
 //  COLOUR TOKENS
@@ -48,8 +52,11 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
   void initState() {
     super.initState();
     _loadNames();
+    _registerFcmToken();
+    _listenForegroundNotifications();
   }
 
+  // ── Load caregiver + patient names from Firestore ──────────────────────────
   Future<void> _loadNames() async {
     final data = await _authService.getUserData();
     if (data == null) return;
@@ -68,6 +75,40 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
       _patientName   = patientName;
       _patientId     = patientId ?? '';
       _loading       = false;
+    });
+  }
+
+  // ── Save FCM token to Firestore ────────────────────────────────────────────
+  Future<void> _registerFcmToken() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) await saveFcmToken(uid);
+  }
+
+  // ── Show in-app banner when notification arrives while app is open ─────────
+  void _listenForegroundNotifications() {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      final title = message.notification?.title ?? 'NeuroGuard Alert';
+      final body  = message.notification?.body  ?? '';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: kLime,
+          duration: const Duration(seconds: 6),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: kBg, fontWeight: FontWeight.bold, fontSize: 14)),
+              if (body.isNotEmpty)
+                Text(body,
+                    style: const TextStyle(color: kBg, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
     });
   }
 
@@ -111,7 +152,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                     context,
                     SpyCallPage(
                       patientId:    _patientId,
-                      caregiverId:  _authService.currentUserId ?? '',
+                      caregiverId:  FirebaseAuth.instance.currentUser?.uid ?? '',
                       videoEnabled: false,
                     ),
                   ),
@@ -132,7 +173,7 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
                     context,
                     SpyCallPage(
                       patientId:    _patientId,
-                      caregiverId:  _authService.currentUserId ?? '',
+                      caregiverId:  FirebaseAuth.instance.currentUser?.uid ?? '',
                       videoEnabled: true,
                     ),
                   ),
@@ -140,7 +181,21 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               ),
               const SizedBox(height: 20),
 
-              // 3. VITALS BANNER
+              // 3. MEDICINE REMINDERS BUTTON ← NEW
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: MedicineButton(
+                  onTap: _loading
+                      ? () {}
+                      : () => _go(
+                    context,
+                    MedicineRemindersPage(patientId: _patientId),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 4. VITALS BANNER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: VitalsBanner(
@@ -154,16 +209,15 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
               ),
               const SizedBox(height: 20),
 
-              // 4. REPORTS | ALL ABOUT DEMENTIA
+              // 5. REPORTS | ALL ABOUT DEMENTIA
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: BottomBlobRow(
-                  onReports:  () => _go(context, const ReportsPage()),
+                  onReports: () => _go(context, const ReportsPage()),
                   onAllAbout: () => _go(context, const AllAboutDementiaPage1()),
                 ),
               ),
               const SizedBox(height: 5),
-
             ],
           ),
         ),
@@ -251,8 +305,8 @@ class QuickActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double rowH   = 100;
-    const double sideH  = 80;
+    const double rowH    = 100;
+    const double sideH   = 80;
     const double locateW = 100;
     const double locateH = 100;
 
@@ -261,8 +315,6 @@ class QuickActionRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-
-          // SPY CALL
           Expanded(
             child: GestureDetector(
               onTap: onSpyCall,
@@ -272,28 +324,22 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                      child: Image.asset(kImgSpyCall, fit: BoxFit.fill),
-                    ),
-                    const Text(
-                      'SPY\nCALL',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontFamily: 'Roboto',
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        height: 1.35,
-                      ),
-                    ),
+                        child: Image.asset(kImgSpyCall, fit: BoxFit.fill)),
+                    const Text('SPY\nCALL',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kBg,
+                          fontFamily: 'Roboto',
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          height: 1.35,
+                        )),
                   ],
                 ),
               ),
             ),
           ),
-
           const SizedBox(width: 8),
-
-          // LOCATE
           GestureDetector(
             onTap: onLocate,
             child: SizedBox(
@@ -302,30 +348,21 @@ class QuickActionRow extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Image.asset(
-                    kImgLocate,
-                    width: locateW,
-                    height: locateH,
-                    fit: BoxFit.contain,
-                  ),
-                  const Text(
-                    'LOCATE',
-                    style: TextStyle(
-                      color: kWhite,
-                      fontFamily: 'Roboto',
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
+                  Image.asset(kImgLocate,
+                      width: locateW, height: locateH, fit: BoxFit.contain),
+                  const Text('LOCATE',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontFamily: 'Roboto',
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                      )),
                 ],
               ),
             ),
           ),
-
           const SizedBox(width: 8),
-
-          // SNAP TRIGGER
           Expanded(
             child: GestureDetector(
               onTap: onSnapTrigger,
@@ -335,25 +372,21 @@ class QuickActionRow extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                      child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill),
-                    ),
-                    const Text(
-                      'SNAP\nTRIGGER',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: kBg,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Roboto',
-                        height: 1.35,
-                      ),
-                    ),
+                        child: Image.asset(kImgSnapTrigger, fit: BoxFit.fill)),
+                    const Text('SNAP\nTRIGGER',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kBg,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'Roboto',
+                          height: 1.35,
+                        )),
                   ],
                 ),
               ),
             ),
           ),
-
         ],
       ),
     );
@@ -361,7 +394,67 @@ class QuickActionRow extends StatelessWidget {
 }
 
 // =============================================================================
-//  3. VITALS BANNER
+//  3. MEDICINE BUTTON ← NEW
+// =============================================================================
+class MedicineButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const MedicineButton({super.key, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kLime.withOpacity(0.4), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: kLime.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.medication_outlined,
+                  color: kLime, size: 26),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('MEDICINE REMINDERS',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontFamily: 'MicrosoftSansSerifBold',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      )),
+                  SizedBox(height: 3),
+                  Text('Set and manage medication schedule',
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      )),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  4. VITALS BANNER
 // =============================================================================
 class VitalsBanner extends StatelessWidget {
   final VoidCallback onTap;
@@ -376,19 +469,18 @@ class VitalsBanner extends StatelessWidget {
         child: Stack(
           alignment: Alignment.centerLeft,
           children: [
-            Image.asset(kImgVitals, width: double.infinity, fit: BoxFit.fitWidth),
+            Image.asset(kImgVitals,
+                width: double.infinity, fit: BoxFit.fitWidth),
             const Padding(
               padding: EdgeInsets.only(left: 20),
-              child: Text(
-                'VITALS',
-                style: TextStyle(
-                  color: kWhite,
-                  fontSize: 26,
-                  fontFamily: 'MicrosoftSansSerifBold',
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.5,
-                ),
-              ),
+              child: Text('VITALS',
+                  style: TextStyle(
+                    color: kWhite,
+                    fontSize: 26,
+                    fontFamily: 'MicrosoftSansSerifBold',
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.5,
+                  )),
             ),
           ],
         ),
@@ -398,7 +490,7 @@ class VitalsBanner extends StatelessWidget {
 }
 
 // =============================================================================
-//  4. BOTTOM BLOB ROW
+//  5. BOTTOM BLOB ROW
 // =============================================================================
 class BottomBlobRow extends StatelessWidget {
   final VoidCallback onReports;
@@ -421,8 +513,6 @@ class BottomBlobRow extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-
-              // REPORTS
               GestureDetector(
                 onTap: onReports,
                 child: SizedBox(
@@ -431,28 +521,21 @@ class BottomBlobRow extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(
-                        kImgReports,
-                        width: blobSize,
-                        height: blobSize,
-                        fit: BoxFit.contain,
-                      ),
-                      const Text(
-                        'REPORTS',
-                        style: TextStyle(
-                          color: kBg,
-                          fontSize: 26,
-                          fontFamily: 'MicrosoftSansSerifBold',
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+                      Image.asset(kImgReports,
+                          width: blobSize, height: blobSize,
+                          fit: BoxFit.contain),
+                      const Text('REPORTS',
+                          style: TextStyle(
+                            color: kBg,
+                            fontSize: 26,
+                            fontFamily: 'MicrosoftSansSerifBold',
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          )),
                     ],
                   ),
                 ),
               ),
-
-              // ALL ABOUT DEMENTIA
               GestureDetector(
                 onTap: onAllAbout,
                 child: SizedBox(
@@ -461,29 +544,23 @@ class BottomBlobRow extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Image.asset(
-                        kImgAllAbout,
-                        width: blobSize,
-                        height: blobSize,
-                        fit: BoxFit.contain,
-                      ),
-                      const Text(
-                        'ALL\nABOUT\nDEMENTIA',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: kWhite,
-                          fontSize: 26,
-                          fontFamily: 'MicrosoftSansSerifBold',
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.4,
-                          height: 1.4,
-                        ),
-                      ),
+                      Image.asset(kImgAllAbout,
+                          width: blobSize, height: blobSize,
+                          fit: BoxFit.contain),
+                      const Text('ALL\nABOUT\nDEMENTIA',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: kWhite,
+                            fontSize: 26,
+                            fontFamily: 'MicrosoftSansSerifBold',
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.4,
+                            height: 1.4,
+                          )),
                     ],
                   ),
                 ),
               ),
-
             ],
           ),
         );

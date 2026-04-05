@@ -1,5 +1,7 @@
 import 'package:permission_handler/permission_handler.dart';
 
+enum LocationPermissionLevel { always, foregroundOnly, denied }
+
 class PermissionService {
 
   /// Call this once on app startup (e.g., in main.dart or splash screen).
@@ -9,6 +11,20 @@ class PermissionService {
     await _requestCameraPermission();
     await _requestLocationPermission();
   }
+
+  // ✅ NEW: typed check for use before starting FGS
+  static Future<LocationPermissionLevel> getLocationPermissionLevel() async {
+    if (await Permission.locationAlways.isGranted) {
+      return LocationPermissionLevel.always;
+    }
+    if (await Permission.location.isGranted) {
+      return LocationPermissionLevel.foregroundOnly;
+    }
+    return LocationPermissionLevel.denied;
+  }
+
+  static Future<bool> isBackgroundLocationGranted() async =>
+      await Permission.locationAlways.isGranted;
 
   // --- MICROPHONE ---
   static Future<bool> _requestMicrophonePermission() async {

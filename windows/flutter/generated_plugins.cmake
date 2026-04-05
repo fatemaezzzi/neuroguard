@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   firebase_database
   firebase_storage
+  flutter_timezone
   flutter_tts
   geolocator_windows
   iris_method_channel

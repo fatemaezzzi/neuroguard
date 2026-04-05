@@ -2,8 +2,17 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../models/alert_model.dart';
+import 'alert_service.dart';
 
 /// LocationService — Patient Side
+/// ────────────────────────────────
+/// CHANGES:
+///   • _checkSafeZoneFromCache now calls AlertService on breach transition
+///     → caregiver gets FCM push: "Patient outside safe zone"
+///   • After FCM is sent, a second spyCall alert is fired asking caregiver
+///     if they want to make a spy call
+///   • _lastBreachAlertTime throttle prevents repeated alerts (min 5 min gap)
 
 class LocationService {
   // ─── Singleton ────────────────────────────────────────────────────────────
@@ -17,9 +26,16 @@ class LocationService {
   bool    _isTracking     = false;
   String? _activePatientId;
 
-  // GPS stream config:
-  //   accuracy:best      → activates the GPS chip (not cell/WiFi)
-  //   distanceFilter:10  → only emits when patient moves ≥ 10 m
+  // Set to true after the first safe-zone cache load on startTracking.
+  // Alerts are suppressed until this is true — prevents false-breach
+  // alerts firing on the very first GPS tick after a service restart
+  // when the patient hasn't actually moved.
+  bool _safeZoneInitialised = false;
+
+  // Throttle: don't re-fire breach alert within 5 minutes
+  DateTime? _lastBreachAlertTime;
+  static const _breachAlertCooldown = Duration(minutes: 5);
+
   static const LocationSettings _locationSettings = LocationSettings(
     accuracy:       LocationAccuracy.best,
     distanceFilter: 10,
@@ -28,8 +44,6 @@ class LocationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ─── In-memory safe zone cache ────────────────────────────────────────────
-  // Populated once on startTracking(), kept fresh by _docListener.
-  // Zone checks read from here — zero additional Firestore reads per GPS tick.
   _CachedSafeZone? _cachedSafeZone;
 
   // ─── Notifications ────────────────────────────────────────────────────────
@@ -37,7 +51,7 @@ class LocationService {
   FlutterLocalNotificationsPlugin();
 
   // ──────────────────────────────────────────────────────────────────────────
-  // STEP 1 — Initialise (call once from patient app's main or initState)
+  // STEP 1 — Initialise
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
@@ -62,22 +76,20 @@ class LocationService {
     if (!serviceEnabled) return false;
 
     LocationPermission permission = await Geolocator.checkPermission();
-
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return false;
     }
-
     if (permission == LocationPermission.deniedForever) return false;
 
-    // FIX (BUG 3): Calling requestPermission() a second time does NOT
-    // upgrade whileInUse → always on Android 10+. The OS ignores it.
-    // The correct path: show a rationale dialog then call:
-    //   await Geolocator.openAppSettings();
-    // from your UI layer so the user can flip "Allow all the time" manually.
-    // We return true for whileInUse so foreground tracking still starts.
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
+    // ✅ FIX: whileInUse is NOT sufficient for a location-type FGS on SDK 34+
+    // The service WILL crash and restart every 5s if we proceed with whileInUse
+    if (permission != LocationPermission.always) {
+      print('[LocationService] Background location (always) is required. Got: $permission');
+      return false; // Stop here — do NOT start tracking
+    }
+
+    return true;
   }
 
   Future<PermissionStatus> getPermissionStatus() async {
@@ -95,11 +107,6 @@ class LocationService {
   // STEP 3 — Start / Stop Tracking
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Starts live GPS tracking for [patientId].
-  ///
-  /// FIX (BUG 2): getPositionStream() instead of Timer.periodic.
-  /// The OS-level subscription survives backgrounding and respects
-  /// distanceFilter so Firestore writes only happen on real movement.
   Future<void> startTracking({required String patientId}) async {
     if (_isTracking && _activePatientId == patientId) return;
     if (_isTracking) stopTracking();
@@ -110,10 +117,8 @@ class LocationService {
     _isTracking      = true;
     _activePatientId = patientId;
 
-    // Warm cache before the first GPS tick so zone check works immediately
     await _refreshSafeZoneCache(patientId);
 
-    // Keep cache in sync whenever the caregiver edits the safe zone
     _docListener = _db
         .collection('users')
         .doc(patientId)
@@ -131,13 +136,6 @@ class LocationService {
         );
   }
 
-  /// DEV ONLY — bypasses auth for local testing.
-  ///
-  /// In patient screen initState:
-  ///   await LocationService().startTrackingForTesting();
-  ///
-  /// Navigate caregiver view with the same ID:
-  ///   TrackerPage(patientId: 'test_patient_001', patientName: 'Test')
   Future<void> startTrackingForTesting({
     String testPatientId = 'test_patient_001',
   }) async {
@@ -147,11 +145,12 @@ class LocationService {
   void stopTracking() {
     _positionStream?.cancel();
     _docListener?.cancel();
-    _positionStream  = null;
-    _docListener     = null;
-    _isTracking      = false;
-    _activePatientId = null;
-    _cachedSafeZone  = null;
+    _positionStream        = null;
+    _docListener           = null;
+    _isTracking            = false;
+    _activePatientId       = null;
+    _cachedSafeZone        = null;
+    _safeZoneInitialised   = false;
   }
 
   bool    get isTracking      => _isTracking;
@@ -162,7 +161,6 @@ class LocationService {
   // ──────────────────────────────────────────────────────────────────────────
 
   void _onNewPosition(String patientId, Position pos) {
-    // Fire-and-forget — never await inside a stream listener callback
     _pushPosition(patientId, pos, isStale: false);
   }
 
@@ -172,9 +170,6 @@ class LocationService {
         required bool isStale,
       }) async {
     try {
-      // .set(merge:true) creates 'liveLocation' if absent.
-      // .update() throws NOT_FOUND on a missing key — that was the root
-      // cause of the caregiver seeing no patient marker and stale timestamps.
       await _db.collection('users').doc(patientId).set(
         {
           'liveLocation': {
@@ -190,7 +185,6 @@ class LocationService {
         SetOptions(merge: true),
       );
 
-      // Zone check uses in-memory cache — zero additional Firestore reads
       _checkSafeZoneFromCache(patientId, pos);
     } catch (e) {
       assert(() { print('[LocationService] Push failed: $e'); return true; }());
@@ -219,6 +213,10 @@ class LocationService {
     try {
       final doc = await _db.collection('users').doc(patientId).get();
       _onDocSnapshot(doc);
+      // Mark as initialised AFTER the first real read from Firestore.
+      // The first GPS tick after this point reflects the true stored state,
+      // so no spurious transition alert will fire on restart.
+      _safeZoneInitialised = true;
     } catch (_) {}
   }
 
@@ -226,14 +224,20 @@ class LocationService {
     final cache = _cachedSafeZone;
     if (cache == null) return;
 
+    // Suppress all checks until the first Firestore read has completed.
+    // This prevents a false-breach on the very first GPS tick after restart.
+    if (!_safeZoneInitialised) return;
+
     final double dist = Geolocator.distanceBetween(
       pos.latitude, pos.longitude,
       cache.centerLat, cache.centerLng,
     );
     final bool isInside = dist <= cache.radiusMeters;
-    if (isInside == cache.wasInsideZone) return; // no change — skip write
 
-    // Optimistic cache update before async Firestore write
+    // Only act on a genuine state transition
+    if (isInside == cache.wasInsideZone) return;
+
+    // Optimistic cache update
     _cachedSafeZone = _CachedSafeZone(
       centerLat:     cache.centerLat,
       centerLng:     cache.centerLng,
@@ -250,9 +254,52 @@ class LocationService {
         }
       },
       SetOptions(merge: true),
-    ).then((_) {
-      if (!isInside) _logBreachEvent(patientId, pos, dist);
+    ).then((_) async {
+      if (!isInside) {
+        // Patient just LEFT the safe zone → alert
+        await _logBreachEvent(patientId, pos, dist);
+        await _sendBreachAlerts(patientId, dist);
+      }
+      // Patient just RE-ENTERED the safe zone → no alert needed
     });
+  }
+
+  // ─── NEW: Send FCM alerts on breach ───────────────────────────────────────
+  Future<void> _sendBreachAlerts(String patientId, double distMeters) async {
+    // Throttle — don't spam if GPS jitters on the boundary
+    final now = DateTime.now();
+    if (_lastBreachAlertTime != null &&
+        now.difference(_lastBreachAlertTime!) < _breachAlertCooldown) {
+      return;
+    }
+    _lastBreachAlertTime = now;
+
+    final distStr = distMeters >= 1000
+        ? '${(distMeters / 1000).toStringAsFixed(1)} km'
+        : '${distMeters.toStringAsFixed(0)} m';
+
+    // 1. Geofence breach alert → caregiver
+    await AlertService().send(
+      patientId: patientId,
+      alert: AlertModel(
+        type:     AlertType.geoFence,
+        message:  'Patient is $distStr outside the safe zone.',
+        severity: AlertSeverity.critical,
+        metadata: {'distanceMeters': distMeters},
+      ),
+    );
+
+    // 2. Spy call suggestion alert → caregiver (sent 3 seconds after)
+    await Future.delayed(const Duration(seconds: 3));
+    await AlertService().send(
+      patientId: patientId,
+      alert: AlertModel(
+        type:     AlertType.spyCall,
+        message:  'Patient is not in the safe zone. Do you want to make a quick spy call?',
+        severity: AlertSeverity.warning,
+        metadata: {'distanceMeters': distMeters},
+      ),
+    );
   }
 
   Future<void> _logBreachEvent(
