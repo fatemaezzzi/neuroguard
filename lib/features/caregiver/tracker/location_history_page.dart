@@ -71,6 +71,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
   // ── Data loading ──────────────────────────────────────────────────────────
 
   Future<void> _load() async {
+    debugPrint('=== HISTORY PAGE loading for patientId: ${widget.patientId} ===');
     setState(() => _isLoading = true);
 
     final (from, to) = _selectedRange.range;

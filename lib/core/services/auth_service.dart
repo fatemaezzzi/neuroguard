@@ -50,18 +50,24 @@ class AuthService {
   // ── SIGN OUT ───────────────────────────────────────────────────────────
   Future<void> signOut() => _auth.signOut();
 
-  // ── GET USER DATA (cache-first for speed) ─────────────────────────────
-  // On first call after login, tries local Firestore cache first.
-  // Falls back to server if cache miss. This eliminates the cold-start
-  // network round-trip that was causing login delay.
+  // ── GET USER DATA (cache-first, server fallback) ──────────────────────
+  // Uses cache for speed. Falls back to server on cache miss or when
+  // paired but patient name not yet cached (one-time post-pairing refresh).
   Future<Map<String, dynamic>?> getUserData() async {
     if (currentUid == null) return null;
     final ref = _db.collection('users').doc(currentUid);
 
     try {
-      // Try cache first — instant on subsequent logins
       final cached = await ref.get(const GetOptions(source: Source.cache));
-      if (cached.exists) return cached.data();
+      if (cached.exists) {
+        final data = cached.data()!;
+        // One-time server fetch if paired but patient name not yet cached
+        if (data['is_paired'] == true && data['paired_patient_name'] == null) {
+          final fresh = await ref.get(const GetOptions(source: Source.server));
+          return fresh.data();
+        }
+        return data;
+      }
     } catch (_) {
       // Cache miss on fresh install — fall through to server
     }
@@ -86,18 +92,25 @@ class AuthService {
   Future<void> pairPatientToCaregiver({
     required String patientId,
     required String caregiverId,
+    String patientName = 'Patient',
   }) async {
     final batch = _db.batch();
 
-    batch.update(_db.collection('users').doc(patientId), {
-      'is_paired': true,
-      'paired_caregiver_id': caregiverId,
-    });
+    batch.set(
+      _db.collection('users').doc(patientId),
+      {'is_paired': true, 'paired_caregiver_id': caregiverId},
+      SetOptions(merge: true),
+    );
 
-    batch.update(_db.collection('users').doc(caregiverId), {
-      'is_paired': true,
-      'paired_patient_id': patientId,
-    });
+    batch.set(
+      _db.collection('users').doc(caregiverId),
+      {
+        'is_paired': true,
+        'paired_patient_id': patientId,
+        'paired_patient_name': patientName,  // cached to avoid second read on dashboard load
+      },
+      SetOptions(merge: true),
+    );
 
     await batch.commit();
   }

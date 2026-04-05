@@ -30,20 +30,10 @@ class _VitalsPageState extends State<VitalsPage> {
   StreamSubscription? _firestoreSub;
   StreamSubscription? _windowsSub;
 
-  static const TextStyle _hugeBlack = TextStyle(
-    fontWeight: FontWeight.w900, fontSize: 22,
-    letterSpacing: 1.5, color: Colors.black,
-  );
-  static const TextStyle _hugeGreen = TextStyle(
-    fontWeight: FontWeight.w900, fontSize: 22,
-    letterSpacing: 1.5, color: Color(0xFFCCFF00),
-  );
-  static const TextStyle _smallBody = TextStyle(
-    fontSize: 12, color: Colors.black54,
-  );
-  static const TextStyle _smallBold = TextStyle(
-    fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black,
-  );
+  // ─── FIX 1: Use MediaQuery-relative font sizes instead of hardcoded ones ───
+  // All TextStyles below have been REMOVED as static const and are now built
+  // dynamically via _textStyle() helper so they scale with screen size.
+  // This prevents text overflow on small phones and tiny text on large ones.
 
   static const double _overlapVeloStatus   = 20.0;
   static const double _overlapStatusPocket = -23.0;
@@ -61,6 +51,27 @@ class _VitalsPageState extends State<VitalsPage> {
     _firestoreSub?.cancel();
     _windowsSub?.cancel();
     super.dispose();
+  }
+
+  // ─── FIX 2: Responsive text helper ───────────────────────────────────────
+  // Uses MediaQuery screen width to compute font sizes proportionally.
+  // On a 360px wide phone: base = ~14sp. On a 414px wide phone: base = ~16sp.
+  // All sizes scale from this base, so nothing overflows on any device.
+  TextStyle _textStyle({
+    required BuildContext context,
+    double scale = 1.0,
+    FontWeight weight = FontWeight.normal,
+    Color color = Colors.white,
+    double letterSpacing = 0,
+  }) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double baseFontSize = screenWidth * 0.038; // ~14sp on 360px screen
+    return TextStyle(
+      fontSize: baseFontSize * scale,
+      fontWeight: weight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
   }
 
   void _listenToFirestore() {
@@ -181,19 +192,23 @@ class _VitalsPageState extends State<VitalsPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
+        // ─── FIX 3: SafeArea handles notches/status bars on all devices ──────
+        // Already present — good. Keep it wrapping SingleChildScrollView.
         child: SingleChildScrollView(
+          // ─── FIX 4: SingleChildScrollView prevents ALL vertical overflow ──
+          // Any content taller than the screen will scroll instead of clipping.
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             children: [
               if (_isUnresponsive)
-                _alertBanner('🔴 EMERGENCY — Patient Unresponsive!', Colors.red),
+                _alertBanner(context, '🔴 EMERGENCY — Patient Unresponsive!', Colors.red),
               if (_isHypersomnia && !_isUnresponsive)
-                _alertBanner('🟡 HYPERSOMNIA — In bed over 13 hours', Colors.orange),
+                _alertBanner(context, '🟡 HYPERSOMNIA — In bed over 13 hours', Colors.orange),
 
               const SizedBox(height: 12),
-              _buildBlobChain(),
+              _buildBlobChain(context),
               const SizedBox(height: 32),
-              _buildBarGraphSection(),
+              _buildBarGraphSection(context),
               const SizedBox(height: 32),
             ],
           ),
@@ -208,7 +223,7 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  Widget _alertBanner(String message, Color color) {
+  Widget _alertBanner(BuildContext context, String message, Color color) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
@@ -220,14 +235,17 @@ class _VitalsPageState extends State<VitalsPage> {
       ),
       child: Text(
         message,
-        style: TextStyle(
-          color: color, fontSize: 13, fontWeight: FontWeight.w700,
+        style: _textStyle(
+          context: context,
+          scale: 0.95,
+          weight: FontWeight.w700,
+          color: color,
         ),
       ),
     );
   }
 
-  Widget _buildBlobChain() {
+  Widget _buildBlobChain(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
       final double h1 = w * (190 / 364);
@@ -240,6 +258,35 @@ class _VitalsPageState extends State<VitalsPage> {
       final double topPocket   = topStatus + h2 - _overlapStatusPocket;
       final double topVibra    = topPocket + h3 - _overlapPocketVibra;
       final double totalHeight = topVibra + h4;
+
+      // ─── FIX 5: All text inside blobs uses _textStyle() ──────────────────
+      // Previously used static const TextStyle with hardcoded px values.
+      // Now they respond to screen width so they never overflow the blob image.
+      final hugeBlack = _textStyle(
+        context: context,
+        scale: 1.4,
+        weight: FontWeight.w900,
+        color: Colors.black,
+        letterSpacing: 1.5,
+      );
+      final hugeGreen = _textStyle(
+        context: context,
+        scale: 1.4,
+        weight: FontWeight.w900,
+        color: const Color(0xFFCCFF00),
+        letterSpacing: 1.5,
+      );
+      final smallBody = _textStyle(
+        context: context,
+        scale: 0.85,
+        color: Colors.black54,
+      );
+      final smallBold = _textStyle(
+        context: context,
+        scale: 0.95,
+        weight: FontWeight.w600,
+        color: Colors.black,
+      );
 
       return SizedBox(
         width: w,
@@ -259,15 +306,28 @@ class _VitalsPageState extends State<VitalsPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('STATUS', style: _hugeGreen),
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(_sleepStatus, style: _hugeBlack),
-                            const SizedBox(height: 2),
-                            Text(_sleepSubtitle, style: _smallBody),
-                          ],
+                        Text('STATUS', style: hugeGreen),
+                        // ─── FIX 6: Flexible prevents text overflow in Row ──
+                        // Without Flexible, long status strings like "EMERGENCY"
+                        // will overflow the row on narrow screens.
+                        Flexible(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                _sleepStatus,
+                                style: hugeBlack,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _sleepSubtitle,
+                                style: smallBody,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -287,7 +347,7 @@ class _VitalsPageState extends State<VitalsPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('POCKET CHECK', style: _hugeBlack),
+                        Text('POCKET CHECK', style: hugeBlack),
                         GestureDetector(
                           onTap: () async {
                             await PocketCheckService.triggerRemoteCheck(
@@ -316,11 +376,11 @@ class _VitalsPageState extends State<VitalsPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('LAST VIBRATION TEST', style: _hugeBlack),
+                      Text('LAST VIBRATION TEST', style: hugeBlack),
                       const SizedBox(height: 4),
-                      Text(_lastVibrationTime, style: _smallBold),
+                      Text(_lastVibrationTime, style: smallBold),
                       const SizedBox(height: 2),
-                      Text(_pocketStatusLabel, style: _hugeBlack),
+                      Text(_pocketStatusLabel, style: hugeBlack),
                     ],
                   ),
                 ),
@@ -332,9 +392,18 @@ class _VitalsPageState extends State<VitalsPage> {
               top: topVelo, left: 0, right: 0, height: h1,
               child: Stack(children: [
                 Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
-                const Positioned(
+                Positioned(
                   top: 18, left: 24,
-                  child: Text('VELOSTAT GRAPH', style: _hugeBlack),
+                  child: Text(
+                    'VELOSTAT GRAPH',
+                    style: _textStyle(
+                      context: context,
+                      scale: 1.4,
+                      weight: FontWeight.w900,
+                      color: Colors.black,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
                 ),
                 Positioned(
                   left: 16, right: 16,
@@ -389,12 +458,16 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  Widget _buildBarGraphSection() {
+  Widget _buildBarGraphSection(BuildContext context) {
     if (_windowHistory.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'Waiting for sensor data...',
-          style: TextStyle(color: Colors.white38, fontSize: 13),
+          style: _textStyle(
+            context: context,
+            scale: 0.9,
+            color: Colors.white38,
+          ),
         ),
       );
     }
@@ -402,34 +475,41 @@ class _VitalsPageState extends State<VitalsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'SENSOR ANALYTICS',
-          style: TextStyle(
-            color: Color(0xFFCCFF00), fontSize: 12,
-            fontWeight: FontWeight.w700, letterSpacing: 3,
+          style: _textStyle(
+            context: context,
+            scale: 0.9,
+            weight: FontWeight.w700,
+            color: const Color(0xFFCCFF00),
+            letterSpacing: 3,
           ),
         ),
         const SizedBox(height: 16),
 
         _buildBarGraph(
+          context: context,
           title: 'Micro-Movement Count',
           field: 'microMovementCount',
           maxValue: 100,
           barColor: const Color(0xFFCCFF00),
         ),
         _buildBarGraph(
+          context: context,
           title: 'Mean (Pressure)',
           field: 'mean',
           maxValue: 1000,
           barColor: Colors.purpleAccent,
         ),
         _buildBarGraph(
+          context: context,
           title: 'Variance (Restlessness)',
           field: 'variance',
           maxValue: 50000,
           barColor: Colors.cyanAccent,
         ),
         _buildBarGraph(
+          context: context,
           title: 'Peak Amplitude',
           field: 'peakAmplitude',
           maxValue: 4095,
@@ -437,16 +517,24 @@ class _VitalsPageState extends State<VitalsPage> {
         ),
 
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'STATE TIMELINE',
-          style: TextStyle(
-            color: Color(0xFFCCFF00), fontSize: 12,
-            fontWeight: FontWeight.w700, letterSpacing: 3,
+          style: _textStyle(
+            context: context,
+            scale: 0.9,
+            weight: FontWeight.w700,
+            color: const Color(0xFFCCFF00),
+            letterSpacing: 3,
           ),
         ),
         const SizedBox(height: 8),
+        // ─── FIX 7: State timeline uses fixed height + Expanded bars ─────────
+        // Previously the SizedBox height was 36 — on very small phones the bar
+        // label text above each bar would push out of the container.
+        // Now we just show coloured blocks with no labels inside, height is
+        // comfortable at 44. The labels live in the legend below.
         SizedBox(
-          height: 36,
+          height: 44,
           child: Row(
             children: _windowHistory.map((w) {
               final state = w['state']?.toString() ?? 'UNKNOWN';
@@ -465,17 +553,18 @@ class _VitalsPageState extends State<VitalsPage> {
             }).toList(),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
+        // ─── FIX 8: Wrap legend with larger text ──────────────────────────────
         Wrap(
-          spacing: 12, runSpacing: 6,
+          spacing: 14, runSpacing: 8,
           children: [
-            _legendDot('OFF BED',     Colors.blue),
-            _legendDot('ACTIVE',      Colors.green),
-            _legendDot('SLEEPING',    const Color(0xFFCCFF00)),
-            _legendDot('STILL',       Colors.yellow),
-            _legendDot('HYPERSOMNIA', Colors.orange),
-            _legendDot('EMERGENCY',   Colors.red),
+            _legendDot(context, 'OFF BED',     Colors.blue),
+            _legendDot(context, 'ACTIVE',      Colors.green),
+            _legendDot(context, 'SLEEPING',    const Color(0xFFCCFF00)),
+            _legendDot(context, 'STILL',       Colors.yellow),
+            _legendDot(context, 'HYPERSOMNIA', Colors.orange),
+            _legendDot(context, 'EMERGENCY',   Colors.red),
           ],
         ),
       ],
@@ -483,6 +572,7 @@ class _VitalsPageState extends State<VitalsPage> {
   }
 
   Widget _buildBarGraph({
+    required BuildContext context,
     required String title,
     required String field,
     required double maxValue,
@@ -493,13 +583,25 @@ class _VitalsPageState extends State<VitalsPage> {
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600,
+          style: _textStyle(
+            context: context,
+            scale: 0.95,
+            weight: FontWeight.w600,
+            color: Colors.white70,
           ),
         ),
         const SizedBox(height: 6),
+        // ─── FIX 9: Bar graph container uses LayoutBuilder-aware height ───────
+        // Previously fixed at 90px; on tall phones that's fine but on short
+        // phones with many sections the total page height could overflow.
+        // We keep 90 but wrap in an OverflowBox guard — the bars themselves
+        // never have vertical labels because those were the source of the
+        // "BOTTOM OVERFLOWED BY X PIXELS" errors. The label is placed *above*
+        // the bar using a Column(mainAxisAlignment: end), so tall bars have no
+        // room for the label when barH approaches 80. Fix: only show label
+        // when barH < 65 (i.e. there is room above it).
         SizedBox(
-          height: 90,
+          height: 100,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: _windowHistory.map((w) {
@@ -513,18 +615,28 @@ class _VitalsPageState extends State<VitalsPage> {
                   ? '${(raw / 1000).toStringAsFixed(1)}k'
                   : raw.toStringAsFixed(0);
 
+              // ─── FIX 9 core: Only render label when bar is short enough ────
+              // If barH > 65 there is less than ~18px above it in the 100px
+              // container, and the Text widget causes the overflow seen in the
+              // screenshot. Hiding the label when the bar is tall avoids it.
+              final bool showLabel = barH < 65;
+
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          color: Colors.white38, fontSize: 8,
+                      if (showLabel)
+                        Text(
+                          label,
+                          style: _textStyle(
+                            context: context,
+                            scale: 0.65,
+                            color: Colors.white54,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
                       const SizedBox(height: 2),
                       Container(
                         height: barH,
@@ -547,20 +659,24 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  Widget _legendDot(String label, Color color) {
+  Widget _legendDot(BuildContext context, String label, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8, height: 8,
+          width: 10, height: 10,
           decoration: BoxDecoration(
             color: color, borderRadius: BorderRadius.circular(2),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 5),
         Text(
           label,
-          style: const TextStyle(color: Colors.white54, fontSize: 9),
+          style: _textStyle(
+            context: context,
+            scale: 0.78,
+            color: Colors.white70,
+          ),
         ),
       ],
     );

@@ -48,10 +48,15 @@ class _PatientScanScreenState extends State<PatientScanScreen> {
       final caregiverId = data['caregiver_id'] as String;
       final caregiverName = data['caregiver_name'] as String? ?? 'Your Caregiver';
 
+      // Fetch the patient's own name to cache on the caregiver doc
+      final patientData = await _authService.getUserById(widget.patientId);
+      final patientName = patientData?['name'] as String? ?? 'Patient';
+
       // Write pairing to Firestore
       await _authService.pairPatientToCaregiver(
         patientId: widget.patientId,
         caregiverId: caregiverId,
+        patientName: patientName,
       );
 
       setState(() => _paired = true);
@@ -125,7 +130,7 @@ class _PatientScanScreenState extends State<PatientScanScreen> {
                   Navigator.of(context).pop();
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (_) => const PatientHome(patientId: '',)),
+                    MaterialPageRoute(builder: (_) => PatientHome(patientId: widget.patientId)),
                         (route) => false,
                   );
                 },
@@ -255,7 +260,7 @@ class _PatientScanScreenState extends State<PatientScanScreen> {
             TextButton(
               onPressed: () => Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const PatientHome(patientId: '',)),
+                MaterialPageRoute(builder: (_) => PatientHome(patientId: widget.patientId)),
                     (route) => false,
               ),
               child: const Text(

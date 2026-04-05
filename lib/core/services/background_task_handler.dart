@@ -3,21 +3,20 @@
 // BackgroundTaskHandler — Foreground Service Isolate
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// This runs in a SEPARATE Dart isolate from the UI. It owns the full
-// capture → SQLite → Firestore sync pipeline. The main isolate does NOT
-// run any Timer.periodic for location history — this handler is the sole owner.
+// KEY FIX (was crashing before onStart even ran):
+//   LocationService has `FirebaseFirestore.instance` as a field initializer.
+//   Field initializers run at object construction time — before onStart() and
+//   before _ensureFirebase() could be called. So the crash happened the moment
+//   `new BackgroundTaskHandler()` was evaluated in startCallback().
+//
+//   Solution: DO NOT declare LocationService as a field. Instead, initialize
+//   it lazily inside _startServices(), which is only called after Firebase is
+//   confirmed ready via _ensureFirebase().
 //
 // TICK CADENCE
-//   ForegroundTaskEventAction.repeat(15000) fires onRepeatEvent every 15 s.
-//   We count ticks and capture+sync at the configured threshold:
-//     Debug build  → 4 ticks  = 1 minute   (easy to verify in logs)
-//     Release build → 60 ticks = 15 minutes (production cadence)
-//
-// FLOW PER CAPTURE TICK
-//   1. captureAndSave()  — GPS fix → SQLite (synced = 0)
-//   2. syncNow()         — SQLite rows with synced=0 → Firestore batch write
-//                          → marks rows synced=1 in SQLite
-//   The caregiver's LocationHistoryPage reads Firestore and will now see data.
+//   ForegroundTaskEventAction.repeat(15000) → onRepeatEvent every 15 s.
+//   Debug:   4 ticks × 15 s = 1 minute
+//   Release: 60 ticks × 15 s = 15 minutes
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/cupertino.dart';
@@ -25,8 +24,8 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:neuroguard/core/services/location_service.dart';
 import 'package:neuroguard/core/services/location_history_service.dart';
+import 'package:neuroguard/core/services/location_service.dart';
 import 'package:neuroguard/core/services/pocket_check_service.dart';
 import 'package:neuroguard/firebase_options.dart';
 
@@ -48,35 +47,36 @@ Future<void> clearPatientIdForBackground() async {
 
 @pragma('vm:entry-point')
 void startCallback() {
+  // BackgroundTaskHandler must have NO field initializers that touch Firebase.
+  // Firebase is initialized inside onStart() before anything else runs.
   FlutterForegroundTask.setTaskHandler(BackgroundTaskHandler());
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 class BackgroundTaskHandler extends TaskHandler {
-  final LocationService _locationService = LocationService();
 
-  // Each isolate gets its own instance — this is correct and intentional.
-  // The background isolate is the ONLY place that calls captureAndSave/syncNow.
-  final LocationHistoryService _historyService = LocationHistoryService();
+  // ── LAZY — assigned only after _ensureFirebase() succeeds ─────────────────
+  // Do NOT move these back to eager field initializers — that was the crash.
+  // LocationService constructor calls FirebaseFirestore.instance immediately,
+  // which throws if Firebase hasn't been initialized in this isolate yet.
+  LocationService?        _locationService;
+  LocationHistoryService? _historyService;
+  PocketCheckService?     _pocketCheckService;
 
-  PocketCheckService? _pocketCheckService;
-  bool    _trackingStarted = false;
+  bool    _trackingStarted   = false;
   String? _activePatientId;
 
-  // ── Tick counter for location-history cadence ─────────────────────────────
-  //
-  // onRepeatEvent fires every 15 seconds.
-  // Debug:   4 ticks × 15 s = 60 s  (1 minute)
-  // Release: 60 ticks × 15 s = 900 s (15 minutes)
-
-  static int get _captureEveryNTicks => kDebugMode ? 4 : 60;
+  // Tick counter: onRepeatEvent fires every 15 s
+  // Debug → 4 ticks = 1 min | Release → 60 ticks = 15 min
+  static const int _captureEveryNTicks = 60;
   int _ticksSinceCapture = 0;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // Firebase MUST be initialized before any service is instantiated.
     await _ensureFirebase();
 
     final prefs = await SharedPreferences.getInstance();
@@ -90,13 +90,9 @@ class BackgroundTaskHandler extends TaskHandler {
     await _startServices(patientId);
   }
 
-  /// Fires every 15 seconds.
-  /// Responsibilities:
-  ///   1. Retry _startServices if login hadn't happened yet at onStart.
-  ///   2. Count ticks and trigger captureAndSave + syncNow at threshold.
   @override
   void onRepeatEvent(DateTime timestamp) async {
-    // ── Retry path ────────────────────────────────────────────────────────
+    // ── Retry: not started yet (login hadn't happened at onStart) ──────────
     if (!_trackingStarted) {
       await _ensureFirebase();
       final prefs = await SharedPreferences.getInstance();
@@ -107,11 +103,10 @@ class BackgroundTaskHandler extends TaskHandler {
       return;
     }
 
-    // ── Capture + sync path ───────────────────────────────────────────────
+    // ── Normal: count ticks and capture+sync at threshold ──────────────────
     _ticksSinceCapture++;
     debugPrint(
-      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks '
-          '(${kDebugMode ? "debug: 1 min" : "release: 15 min"})',
+      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks (15 min interval)',
     );
 
     if (_ticksSinceCapture >= _captureEveryNTicks) {
@@ -120,13 +115,11 @@ class BackgroundTaskHandler extends TaskHandler {
     }
   }
 
-  /// Fast path when app is open — UI sends patientId immediately on login.
   @override
   void onReceiveData(Object data) async {
     if (data is Map<String, dynamic> && data.containsKey('patientId')) {
       final patientId = data['patientId'] as String;
       if (_trackingStarted) return;
-
       await _ensureFirebase();
       await _startServices(patientId);
     }
@@ -134,15 +127,16 @@ class BackgroundTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    _locationService.stopTracking();
+    _locationService?.stopTracking();
     _pocketCheckService?.dispose();
-    await _historyService.dispose();
-    _trackingStarted = false;
-    _activePatientId = null;
+    await _historyService?.dispose();
+    _trackingStarted    = false;
+    _activePatientId    = null;
+    _locationService    = null;
+    _historyService     = null;
+    _pocketCheckService = null;
     debugPrint('[BGTask] Service destroyed.');
   }
-
-  // ── Notification callbacks ────────────────────────────────────────────────
 
   @override
   void onNotificationButtonPressed(String id) {}
@@ -160,14 +154,19 @@ class BackgroundTaskHandler extends TaskHandler {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      debugPrint('[BGTask] Firebase initialized in background isolate ✅');
     }
   }
 
   Future<void> _startServices(String patientId) async {
     _activePatientId = patientId;
 
+    // Safe to instantiate now — Firebase is guaranteed ready.
+    _locationService ??= LocationService();
+    _historyService  ??= LocationHistoryService();
+
     // Real-time live location → Firestore (for the tracker map)
-    await _locationService.startTracking(patientId: patientId);
+    await _locationService!.startTracking(patientId: patientId);
 
     // Firestore listener for caregiver-triggered pocket check
     _pocketCheckService = PocketCheckService(patientId: patientId);
@@ -179,24 +178,21 @@ class BackgroundTaskHandler extends TaskHandler {
     await _captureAndSync();
     _ticksSinceCapture = 0;
 
-    debugPrint('[BGTask] Services started for $patientId');
+    debugPrint('[BGTask] All services started for $patientId ✅');
   }
 
-  /// The core pipeline: GPS fix → SQLite → Firestore.
-  /// This is the ONLY place captureAndSave + syncNow are called.
+  /// The full pipeline: GPS fix → SQLite (synced=0) → Firestore (synced=1).
+  /// This is what makes data appear in the caregiver's History page.
   Future<void> _captureAndSync() async {
-    if (_activePatientId == null) return;
+    if (_activePatientId == null || _historyService == null) return;
     final patientId = _activePatientId!;
 
-    debugPrint('[BGTask] Capturing location for $patientId');
+    debugPrint('[BGTask] ▶ captureAndSave() for $patientId');
+    await _historyService!.captureAndSave(patientId);
 
-    // Step 1: GPS → SQLite (synced = 0)
-    await _historyService.captureAndSave(patientId);
+    debugPrint('[BGTask] ▶ syncNow() for $patientId');
+    await _historyService!.syncNow(patientId);
 
-    // Step 2: SQLite → Firestore (marks rows synced = 1)
-    // This is what makes data visible to the caregiver's History page.
-    await _historyService.syncNow(patientId);
-
-    debugPrint('[BGTask] Capture + sync complete for $patientId');
+    debugPrint('[BGTask] ✅ Capture + sync complete for $patientId');
   }
 }

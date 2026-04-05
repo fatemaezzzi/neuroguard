@@ -112,22 +112,6 @@ class _ReportsPageState extends State<ReportsPage> {
     color: Colors.white,
   );
 
-  static const TextStyle _summaryLabel = TextStyle(
-    fontFamily: 'MicrosoftSansSerifBold',
-    fontWeight: FontWeight.w700,
-    fontSize: 13,
-    color: Colors.white70,
-    letterSpacing: 0.5,
-  );
-
-  static const TextStyle _summaryValue = TextStyle(
-    fontFamily: 'MicrosoftSansSerifBold',
-    fontWeight: FontWeight.w900,
-    fontSize: 22,
-    color: Colors.white,
-    letterSpacing: 0.5,
-  );
-
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   @override
@@ -278,8 +262,6 @@ class _ReportsPageState extends State<ReportsPage> {
               _buildCognitiveReport(),
               const SizedBox(height: 20),
               _buildWeeklySummary(),
-              const SizedBox(height: 20),
-              _buildCognitiveHistory(),
               const SizedBox(height: 32),
             ],
           ),
@@ -293,152 +275,138 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget _buildSleepReport() {
     return LayoutBuilder(builder: (context, constraints) {
       final double w = constraints.maxWidth;
-      final double h = w * (307 / 364);
       final double sh = w * (61 / 342);
 
-      return SizedBox(
-        width: w,
-        height: h,
-        child: Stack(
-          children: [
-            Image.asset('assets/sleepreport.png',
-                width: w, height: h, fit: BoxFit.fill),
-            Positioned(
-              top: 20,
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: const [
-                      Text('SLEEP REPORT', style: _bigBlack),
-                      SizedBox(width: 8),
-                      Text('🌧️', style: TextStyle(fontSize: 22)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+      // No fixed height — content drives the card height.
+      // The background image stretches vertically to match.
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/sleepreport.png', fit: BoxFit.fill),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Text('SLEEP REPORT', style: _bigBlack),
+                    SizedBox(width: 8),
+                    Text('🌧️', style: TextStyle(fontSize: 22)),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-                  // ── Bed status (live StreamBuilder) ───────────────────────
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _bedWindowStream,
-                    builder: (context, snap) {
-                      String statusLabel = 'LOADING…';
-                      TextStyle statusStyle = _bigBlack;
+                // ── Bed status (live StreamBuilder) ─────────────────────
+                StreamBuilder<QuerySnapshot>(
+                  stream: _bedWindowStream,
+                  builder: (context, snap) {
+                    String statusLabel = '—';
+                    TextStyle statusStyle = _bigBlack;
 
-                      if (snap.hasData && snap.data!.docs.isNotEmpty) {
-                        final data = snap.data!.docs.first.data()
-                        as Map<String, dynamic>;
-                        // Use the 'state' field: "ON_BED" or "OFF_BED"
-                        // Fall back to bedOccupancyRatio if state is absent
-                        final state = data['state'] as String?;
-                        final bool isOccupied;
-                        if (state != null) {
-                          isOccupied = state == 'ON_BED';
-                        } else {
-                          final ratio =
-                              (data['bedOccupancyRatio'] as num?)?.toDouble() ??
-                                  0.0;
-                          isOccupied = ratio > 0.5;
-                        }
-                        statusLabel = isOccupied ? 'OCCUPIED' : 'VACANT';
-                        statusStyle = isOccupied ? _bigPurple : _bigBlack;
-                      } else if (snap.hasError) {
-                        statusLabel = 'ERROR';
-                      } else if (!snap.hasData) {
-                        statusLabel = '—';
+                    if (snap.hasData && snap.data!.docs.isNotEmpty) {
+                      final data = snap.data!.docs.first.data()
+                      as Map<String, dynamic>;
+                      final state = data['state'] as String?;
+                      final bool isOccupied;
+                      if (state != null) {
+                        isOccupied = state == 'ON_BED';
+                      } else {
+                        final ratio =
+                            (data['bedOccupancyRatio'] as num?)?.toDouble() ??
+                                0.0;
+                        isOccupied = ratio > 0.5;
                       }
+                      statusLabel = isOccupied ? 'OCCUPIED' : 'VACANT';
+                      statusStyle = isOccupied ? _bigPurple : _bigBlack;
+                    } else if (snap.hasError) {
+                      statusLabel = 'ERROR';
+                    }
 
-                      return SizedBox(
-                        width: w - 40,
-                        height: sh,
-                        child: Stack(
-                          children: [
-                            Image.asset('assets/statusbed.png',
-                                width: w - 40, height: sh, fit: BoxFit.fill),
-                            Positioned.fill(
-                              child: Padding(
-                                padding:
-                                const EdgeInsets.symmetric(horizontal: 16),
-                                child: Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Text('STATUS', style: _bigBlack),
-                                    Text(statusLabel,
-                                        textAlign: TextAlign.right,
-                                        style: statusStyle),
-                                  ],
-                                ),
+                    return SizedBox(
+                      width: w - 40,
+                      height: sh,
+                      child: Stack(
+                        children: [
+                          Image.asset('assets/statusbed.png',
+                              width: w - 40, height: sh, fit: BoxFit.fill),
+                          Positioned.fill(
+                            child: Padding(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                              child: Row(
+                                mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Text('STATUS', style: _bigBlack),
+                                  Text(statusLabel,
+                                      textAlign: TextAlign.right,
+                                      style: statusStyle),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
 
-                  const SizedBox(height: 14),
-                  const Text('ALERT LOGS', style: _bigGreen),
-                  const SizedBox(height: 8),
+                const SizedBox(height: 14),
+                const Text('ALERT LOGS', style: _bigGreen),
+                const SizedBox(height: 8),
 
-                  // ── Alert logs (live StreamBuilder) ───────────────────────
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _alertStream,
-                    builder: (context, snap) {
-                      if (snap.hasError) {
-                        return const Text('Could not load alerts.',
-                            style: TextStyle(color: Colors.white54));
-                      }
+                // ── Alert logs (live StreamBuilder) ─────────────────────
+                StreamBuilder<QuerySnapshot>(
+                  stream: _alertStream,
+                  builder: (context, snap) {
+                    if (snap.hasError) {
+                      return const Text('Could not load alerts.',
+                          style: TextStyle(color: Colors.white54));
+                    }
+                    if (!snap.hasData || snap.data!.docs.isEmpty) {
+                      return const Text('No recent alerts.',
+                          style: TextStyle(
+                              color: Colors.white54,
+                              fontFamily: 'Roboto',
+                              fontSize: 14));
+                    }
 
-                      if (!snap.hasData || snap.data!.docs.isEmpty) {
-                        return const Text('No recent alerts.',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontFamily: 'Roboto',
-                                fontSize: 16));
-                      }
+                    final docs = snap.data!.docs;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: docs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final ts = data['timestamp'] as Timestamp?;
+                        final message = data['message'] as String? ?? 'Alert';
+                        final timeLabel =
+                        ts != null ? _formatTime(ts.toDate()) : '--:--';
 
-                      final docs = snap.data!.docs;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: docs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final ts = data['timestamp'] as Timestamp?;
-                          final message =
-                              data['message'] as String? ?? 'Alert';
-
-                          final timeLabel = ts != null
-                              ? _formatTime(ts.toDate())
-                              : '--:--';
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 90,
-                                  child: Text(timeLabel, style: _timeGreen),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(message, style: _alertText),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(timeLabel,
+                                  style: _timeGreen.copyWith(fontSize: 15)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(message,
+                                    style: _alertText.copyWith(fontSize: 15)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       );
     });
   }
@@ -523,15 +491,57 @@ class _ReportsPageState extends State<ReportsPage> {
                       Container(
                         height: 180,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: const Color(0xFF0D0D0D),
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: const Color(0xFF7C3AED).withValues(alpha: 0.3)),
                         ),
                         padding: const EdgeInsets.fromLTRB(8, 14, 14, 8),
                         child: snap.connectionState == ConnectionState.waiting
                             ? const Center(
                             child: CircularProgressIndicator(
-                                color: Color(0xFF7C3AED)))
+                                color: Color(0xFFCCFF00)))
                             : _buildHoverChart(chartSpots),
+                      ),
+                      const SizedBox(height: 14),
+                      // ── View Full History button ──────────────────────
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CogniTestHistoryScreen(
+                              patientId: widget.patientId,
+                            ),
+                          ),
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 18),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A1A),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: const Color(0xFF7C3AED), width: 1.5),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: const [
+                              Text(
+                                'VIEW FULL HISTORY',
+                                style: TextStyle(
+                                  fontFamily: 'MicrosoftSansSerifBold',
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  letterSpacing: 1.2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Icon(Icons.chevron_right,
+                                  color: Color(0xFF7C3AED), size: 22),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   );
@@ -627,11 +637,13 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget _buildHoverChart(List<FlSpot> spots) {
     if (spots.isEmpty) spots = _fallbackSpots();
 
-    // Compute dynamic Y bounds with 0.5s padding
     final allY = spots.map((s) => s.y).toList();
     final minY = (allY.reduce((a, b) => a < b ? a : b) - 0.5)
         .clamp(0.0, double.infinity);
     final maxY = allY.reduce((a, b) => a > b ? a : b) + 0.5;
+
+    const limeGreen = Color(0xFFCCFF00);
+    const axisLabel = TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'Roboto');
 
     return LineChart(
       LineChartData(
@@ -640,18 +652,15 @@ class _ReportsPageState extends State<ReportsPage> {
           drawVerticalLine: false,
           horizontalInterval: 0.5,
           getDrawingHorizontalLine: (v) =>
-              FlLine(color: Colors.grey.withValues(alpha: 0.3), strokeWidth: 1),
+              FlLine(color: Colors.white.withValues(alpha: 0.08), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
               interval: 1,
-              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) =>
+                  Text(v.toInt().toString(), style: axisLabel),
             ),
           ),
           leftTitles: AxisTitles(
@@ -659,17 +668,12 @@ class _ReportsPageState extends State<ReportsPage> {
               showTitles: true,
               interval: 0.5,
               reservedSize: 38,
-              getTitlesWidget: (v, _) => Text('${v.toStringAsFixed(1)}s',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.black54,
-                      fontFamily: 'Roboto')),
+              getTitlesWidget: (v, _) =>
+                  Text('${v.toStringAsFixed(1)}s', style: axisLabel),
             ),
           ),
-          topTitles:
-          const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-          const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: false),
         minX: 1,
@@ -679,22 +683,30 @@ class _ReportsPageState extends State<ReportsPage> {
         lineBarsData: [
           LineChartBarData(
             spots: spots,
-            isCurved: false,
-            color: Colors.black87,
-            barWidth: 2,
+            isCurved: true,
+            curveSmoothness: 0.25,
+            color: limeGreen,
+            barWidth: 2.5,
             isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, pct, bar, idx) => FlDotCirclePainter(
                 radius: 4,
-                color: Colors.black87,
-                strokeWidth: 0,
-                strokeColor: Colors.transparent,
+                color: limeGreen,
+                strokeWidth: 2,
+                strokeColor: Colors.black,
               ),
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.blueGrey.withValues(alpha: 0.15),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  limeGreen.withValues(alpha: 0.25),
+                  limeGreen.withValues(alpha: 0.0),
+                ],
+              ),
             ),
           ),
         ],
@@ -705,162 +717,185 @@ class _ReportsPageState extends State<ReportsPage> {
   // ── WEEKLY SUMMARY ─────────────────────────────────────────────────────────
 
   Widget _buildWeeklySummary() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final double w = constraints.maxWidth;
-      final double h = w * (349 / 364);
+    return FutureBuilder<_WeeklySummaryData>(
+      future: _weeklySummaryFuture,
+      builder: (context, snap) {
+        final loading = snap.connectionState == ConnectionState.waiting;
+        final d = snap.data;
 
-      return SizedBox(
-        width: w,
-        height: h,
-        child: Stack(
-          children: [
-            Image.asset('assets/weeklysummary.png',
-                width: w, height: h, fit: BoxFit.fill),
-
-            // Title row (top 23% of card — matches the purple header area)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: h * 0.23,
-              child: const Center(
-                child: Text('WEEKLY SUMMARY', style: _bigBlack),
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF111111),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.5), width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header strip ─────────────────────────────────────────
+              Container(
+                width: double.infinity,
+                padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF7C3AED),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                ),
+                child: Row(
+                  children: const [
+                    Text(
+                      'WEEKLY SUMMARY',
+                      style: TextStyle(
+                        fontFamily: 'MicrosoftSansSerifBold',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 22,
+                        letterSpacing: 1.2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Spacer(),
+                    Text('7 DAYS', style: TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 12,
+                      color: Colors.white60,
+                      letterSpacing: 1,
+                    )),
+                  ],
+                ),
               ),
-            ),
 
-            // Stats grid (below the header area)
-            Positioned(
-              top: h * 0.26,
-              left: 24,
-              right: 24,
-              bottom: 20,
-              child: FutureBuilder<_WeeklySummaryData>(
-                future: _weeklySummaryFuture,
-                builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                          color: Color(0xFFCCFF00)),
-                    );
-                  }
-
-                  if (snap.hasError || !snap.hasData) {
-                    return const Center(
-                      child: Text('Could not load weekly data.',
-                          style: TextStyle(color: Colors.white54)),
-                    );
-                  }
-
-                  final d = snap.data!;
-
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Row 1: Hover time + Sleep hours
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _summaryTile(
+              // ── Stats grid ───────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: loading
+                    ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: CircularProgressIndicator(
+                        color: Color(0xFFCCFF00)),
+                  ),
+                )
+                    : snap.hasError || d == null
+                    ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text('Could not load weekly data.',
+                        style: TextStyle(color: Colors.white38)),
+                  ),
+                )
+                    : Column(
+                  children: [
+                    // Row 1
+                    Row(children: [
+                      Expanded(
+                          child: _summaryTile(
+                              icon: Icons.timer_outlined,
                               label: 'AVG HOVER TIME',
                               value: d.avgHoverTime > 0
                                   ? '${d.avgHoverTime.toStringAsFixed(1)}s'
                                   : '—',
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _summaryTile(
+                              accent: const Color(0xFFCCFF00))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: _summaryTile(
+                              icon: Icons.bedtime_outlined,
                               label: 'AVG SLEEP',
                               value: d.avgSleepHours > 0
                                   ? '${d.avgSleepHours.toStringAsFixed(1)}h'
                                   : '—',
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Row 2: Alerts + Occupancy
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _summaryTile(
+                              accent: const Color(0xFF7C3AED))),
+                    ]),
+                    const SizedBox(height: 12),
+                    // Row 2
+                    Row(children: [
+                      Expanded(
+                          child: _summaryTile(
+                              icon: Icons.notifications_outlined,
                               label: 'ALERTS',
                               value: d.alertCount.toString(),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _summaryTile(
+                              accent: const Color(0xFFFF4C4C))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: _summaryTile(
+                              icon: Icons.hotel_outlined,
                               label: 'BED OCCUPANCY',
                               value: d.avgOccupancyPct > 0
                                   ? '${d.avgOccupancyPct.toStringAsFixed(0)}%'
                                   : '—',
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Row 3: Nights monitored (centred)
-                      _summaryTile(
+                              accent: const Color(0xFFCCFF00))),
+                    ]),
+                    const SizedBox(height: 12),
+                    // Row 3 — full width
+                    _summaryTile(
+                        icon: Icons.nights_stay_outlined,
                         label: 'NIGHTS MONITORED',
                         value: d.nightsMonitored.toString(),
-                      ),
-                    ],
-                  );
-                },
+                        accent: const Color(0xFF7C3AED),
+                        fullWidth: true),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    });
+            ],
+          ),
+        );
+      },
+    );
   }
 
-  Widget _summaryTile({required String label, required String value}) {
+  Widget _summaryTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color accent,
+    bool fullWidth = false,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.30),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(label, style: _summaryLabel),
-          const SizedBox(height: 4),
-          Text(value, style: _summaryValue),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: accent, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(
+                    fontFamily: 'MicrosoftSansSerifBold',
+                    fontSize: 10,
+                    color: accent,
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w700,
+                  )),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(
+                    fontFamily: 'MicrosoftSansSerifBold',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 22,
+                    color: Colors.white,
+                  )),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // ── COGNITIVE HISTORY BUTTON ──────────────────────────────────────────────
-
-  Widget _buildCognitiveHistory() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final double w = constraints.maxWidth;
-      return GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  CogniTestHistoryScreen(patientId: widget.patientId),
-            ),
-          );
-        },
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Image.asset(
-              'assets/cognitivehistorybutton.png',
-              width: w,
-              fit: BoxFit.fitWidth,
-            ),
-            const Text('COGNITIVE HISTORY', style: _bigBlack),
-          ],
-        ),
-      );
-    });
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

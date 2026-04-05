@@ -56,30 +56,45 @@ class PocketCheckService {
   // Score thresholds — anything above TABLE_THRESHOLD = ON_TABLE
   //                  — anything below PERSON_THRESHOLD = ON_PERSON
   //                  — in between = UNKNOWN (safe default)
-  static const double _tableThreshold  = 0.72;
-  static const double _personThreshold = 0.55;
+  //
+  // Dead-zone widened: hard-case phones produce intermediate scores because
+  // the case absorbs motor energy, compressing variance and peak toward the
+  // body range. A wider UNKNOWN band prevents false ON_PERSON on a table.
+  static const double _tableThreshold  = 0.75;   // was 0.72
+  static const double _personThreshold = 0.40;   // was 0.55 — widened dead-zone
 
   // Individual metric bounds (used for 0-1 normalisation)
-  static const double _varianceMin      = 0.02;
+  //
+  // _varianceMin / _peakMin lowered because a hard-case phone on a table
+  // produces damped signals (~0.008–0.015 variance, ~0.10–0.20 peak).
+  // The old mins were above those values, clamping table readings to 0 and
+  // making them indistinguishable from body readings.
+  static const double _varianceMin      = 0.005;  // was 0.02
   static const double _varianceMax      = 0.55;
-  static const double _peakMin          = 0.30;
+  static const double _peakMin          = 0.08;   // was 0.30
   static const double _peakMax          = 2.20;
-  // FIX: decay is now a true ratio in [0, 1] — bounds match that range.
-  // Previously _decayMax was 0.060 but the raw value was multiplied by 0.06
-  // before normalisation, which clamped normDecay to ~1.0 on every run and
-  // effectively zeroed out the 20 % weight this metric was supposed to carry.
   static const double _decayMin         = 0.001;
   static const double _decayMax         = 1.0;
 
-  // Metric weights — must sum to 1.0
-  static const double _wVariance        = 0.60;
-  static const double _wPeak            = 0.35;
-  static const double _wDecay           = 0.25;
+  // Metric weights — MUST sum to 1.0
+  // Previous values (0.60 + 0.35 + 0.25 = 1.20) were unnormalised — the raw
+  // score could exceed 1.0, making post-inversion scores go negative and
+  // rendering both thresholds meaningless.
+  // Decay weight reduced to 0.05: the collection window (was 1200 ms) was
+  // shorter than the vibration (1600 ms), so there was no post-motor signal
+  // to measure — decay was capturing mid-vibration noise, not true decay.
+  static const double _wVariance        = 0.65;   // was 0.60
+  static const double _wPeak            = 0.30;   // was 0.35
+  static const double _wDecay           = 0.05;   // was 0.25 (non-discriminating)
 
   // Timing
-  static const int _vibrationDurationMs       = 1600;   // slightly longer for better signal
-  static const int _preVibrationDelayMs       = 100;    // wait for motor to spin up
-  static const int _collectDurationMs         = 1200;  // collect for 1.4s
+  // _collectDurationMs extended beyond _vibrationDurationMs so the late
+  // window of the decay calculation actually captures post-vibration signal.
+  // Previously 1200 ms < 1600 ms vibration, so the motor was still running
+  // when collection ended — no decay was measurable.
+  static const int _vibrationDurationMs       = 1600;
+  static const int _preVibrationDelayMs       = 100;
+  static const int _collectDurationMs         = 2200;  // was 1200 — now 600 ms post-vibration
   static const int _passiveInactivityMinutes  = 15;
   static const double _passiveVarianceThreshold = 0.008; // stricter for passive check
 

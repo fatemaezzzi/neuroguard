@@ -61,19 +61,10 @@ class _CaregiverHomePageState extends State<CaregiverHomePage> {
     final data = await _authService.getUserData();
     if (data == null) return;
 
-    final caregiverName = data['name'] as String? ?? 'Caregiver';
-    final patientId     = data['paired_patient_id'] as String?;
-
-    String patientName = 'Patient';
-    if (patientId != null && patientId.isNotEmpty) {
-      final patientData = await _authService.getUserById(patientId);
-      patientName = patientData?['name'] as String? ?? 'Patient';
-    }
-
     setState(() {
-      _caregiverName = caregiverName;
-      _patientName   = patientName;
-      _patientId     = patientId ?? '';
+      _caregiverName = data['name'] as String? ?? 'Caregiver';
+      _patientId     = data['paired_patient_id'] as String? ?? '';
+      _patientName   = data['paired_patient_name'] as String? ?? 'Patient';
       _loading       = false;
     });
   }
