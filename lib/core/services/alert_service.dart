@@ -83,7 +83,7 @@ class AlertService {
               'notification': {
                 'channel_id': alert.type == AlertType.geoFence
                     ? 'safezone_breach'
-                    : 'medicine_reminders',
+                    : 'medicine_alarm',
               },
             },
           },
