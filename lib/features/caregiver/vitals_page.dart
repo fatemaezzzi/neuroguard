@@ -302,9 +302,7 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topStatus, left: 0, right: 0, height: h2,
               child: Stack(children: [
-                ClipRect(
-                  child: Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
-                ),
+                Image.asset('assets/statussleeping.png', fit: BoxFit.fill),
                 Positioned.fill(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -345,9 +343,7 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topPocket, left: 0, right: 0, height: h3,
               child: Stack(children: [
-                ClipRect(
-                  child: Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
-                ),
+                Image.asset('assets/pocketcheck.png', fit: BoxFit.fill),
                 Positioned.fill(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -361,8 +357,10 @@ class _VitalsPageState extends State<VitalsPage> {
                               widget.patientId,
                             );
                           },
-                          child: ClipRect(
-                            child: Image.asset('assets/arrow.png', fit: BoxFit.fill),
+                          child: Image.asset(
+                            'assets/arrow.png',
+                            width: 30, height: 30,
+                            color: const Color(0xFFCCFF00),
                           ),
                         ),
                       ],
@@ -376,9 +374,7 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topVibra, left: 0, right: 0, height: h4,
               child: Stack(children: [
-              ClipRect(
-              child: Image.asset('assets/lastvibrationtest.png', fit: BoxFit.fill),
-            ),
+                Image.asset('assets/lastvibrationtest.png', fit: BoxFit.fill),
                 Positioned.fill(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -398,9 +394,7 @@ class _VitalsPageState extends State<VitalsPage> {
             Positioned(
               top: topVelo, left: 0, right: 0, height: h1,
               child: Stack(children: [
-      ClipRect(
-      child: Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
-      ),
+                Image.asset('assets/velostatgraph.png', fit: BoxFit.fill),
                 Positioned(
                   top: 18, left: 24,
                   child: Text(
