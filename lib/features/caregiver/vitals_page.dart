@@ -206,7 +206,10 @@ class _VitalsPageState extends State<VitalsPage> {
                 _alertBanner(context, '🟡 HYPERSOMNIA — In bed over 13 hours', Colors.orange),
 
               const SizedBox(height: 12),
-              _buildBlobChain(context),
+              Padding(
+                padding: EdgeInsets.zero,
+                child: _buildBlobChain(context),
+              ),
               const SizedBox(height: 32),
               _buildBarGraphSection(context),
               const SizedBox(height: 32),
@@ -292,7 +295,7 @@ class _VitalsPageState extends State<VitalsPage> {
         width: w,
         height: totalHeight,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
 
             // STATUS

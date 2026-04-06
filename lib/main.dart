@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -81,10 +82,10 @@ void _initForegroundTask() {
     foregroundTaskOptions: ForegroundTaskOptions(
       // Retry every 15s in case patientId wasn't in prefs yet on first start
       eventAction: ForegroundTaskEventAction.repeat(15000),
-      autoRunOnBoot: true,             // survive device reboot
+      autoRunOnBoot: true,              // survive device reboot
       autoRunOnMyPackageReplaced: true, // survive app update
-      allowWakeLock: true,             // prevent CPU sleep
-      allowWifiLock: true,             // keep Firestore connection alive
+      allowWakeLock: true,              // prevent CPU sleep
+      allowWifiLock: true,              // keep Firestore connection alive
     ),
   );
 }
@@ -92,41 +93,90 @@ void _initForegroundTask() {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // MUST be before runApp — initialises the port that lets the background
-  // isolate communicate back to the UI isolate
+  // ── MUST be synchronous before runApp ────────────────────────────────────
+  // initCommunicationPort() sets up a ReceivePort — it must run before the
+  // background isolate tries to send messages, but is NOT async and does
+  // not block the UI.
   FlutterForegroundTask.initCommunicationPort();
 
+  // ── Firebase init is the only true blocker ───────────────────────────────
+  // Auth state restoration needs Firebase ready before AuthGate renders,
+  // otherwise FirebaseAuth.instance.authStateChanges() throws immediately.
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
 
+  // Register background FCM handler — synchronous, no await needed.
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  await PermissionService.requestAllPermissions();
-  await LocationService().initialise();
-  await SpyCallService.init(); // initializes Agora engine
-
-  // Configure foreground task options
+  // Configure foreground task options — synchronous, no await needed.
   _initForegroundTask();
 
-  // Start the persistent background service.
-  // startCallback (in background_task_handler.dart) runs in a separate isolate.
-  // It reads patientId from SharedPreferences so it works even after app kill.
-  // TODO: gate behind patient-role check once userRole provider is wired.
-  await FlutterForegroundTask.startService(
-    serviceId: 256,
-    notificationTitle: 'NeuroGuard Active',
-    notificationText: 'Patient monitoring is running',
-    callback: startCallback,
-  );
-
+  // ── Paint the UI immediately ─────────────────────────────────────────────
+  // Everything below (permissions, Agora, LocationService, foreground service)
+  // is deferred to after the first frame so the user sees the AuthGate /
+  // splash instantly instead of staring at a blank screen for 1-3 seconds.
   runApp(
     const ProviderScope(
       child: NeuroGuardApp(),
     ),
   );
+
+  // ── Post-frame deferred initialisation ───────────────────────────────────
+  // Runs after the first frame is painted. Order matters:
+  //   1. Permissions  — fast when already granted (now run in parallel)
+  //   2. LocationService — notification plugin setup (~50 ms)
+  //   3. SpyCallService  — Agora engine (~200-400 ms, heaviest item)
+  //   4. Foreground service — PATIENT ROLE ONLY, not caregivers
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await PermissionService.requestAllPermissions();
+    await LocationService().initialise();
+
+    // Agora init is deferred here instead of blocking main().
+    // SpyCallService features are only used after navigation to SpyCallPage
+    // so it is safe to initialise after first paint.
+    await SpyCallService.init();
+
+    // ── Foreground service: PATIENT ROLE ONLY ────────────────────────────
+    // Previously this started for ALL users (including caregivers), spawning
+    // an extra background Flutter engine + Geolocator instance — visible in
+    // your logs as "Connected engine count 3" and "Skipped 49 frames".
+    //
+    // Now we gate it behind a role check. The service still auto-starts on
+    // reboot via autoRunOnBoot:true so patients who reboot are still covered.
+    // Caregivers are completely excluded — this eliminates the duplicate
+    // engine problem and the main-thread jank on the caregiver side.
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        // Cache-first: avoids a network round-trip on every launch.
+        // Falls back gracefully on cache miss (first install).
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get(const GetOptions(source: Source.cache));
+
+        final role = doc.data()?['role'] as String?;
+
+        if (role == 'patient') {
+          await FlutterForegroundTask.startService(
+            serviceId: 256,
+            notificationTitle: 'NeuroGuard Active',
+            notificationText: 'Patient monitoring is running',
+            callback: startCallback,
+          );
+        }
+        // Caregivers skip the foreground service entirely.
+        // activatePatientBackground() starts it on-demand after pairing.
+      } catch (_) {
+        // Not logged in yet, or cache miss on first install.
+        // The login flow calls activatePatientBackground() which starts
+        // the service for patients at the right time.
+      }
+    }
+  });
 }
 
 class NeuroGuardApp extends StatelessWidget {
