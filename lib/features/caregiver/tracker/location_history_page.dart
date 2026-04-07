@@ -33,14 +33,13 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
     with SingleTickerProviderStateMixin {
 
   // ── Theme — matches NeuroGuard black+lime+purple palette ──────────────────
-  static const Color _bg         = Color(0xFF0A0A0A);   // true black bg
-  static const Color _card       = Color(0xFF161616);   // slightly lifted card
-  static const Color _cardBorder = Color(0xFF242424);   // subtle border
-  static const Color _lime       = Color(0xFFB5E800);   // primary lime accent
-  static const Color _purple     = Color(0xFF7B2FBE);   // secondary purple
+  static const Color _bg         = Color(0xFF0A0A0A);
+  static const Color _card       = Color(0xFF161616);
+  static const Color _cardBorder = Color(0xFF242424);
+  static const Color _lime       = Color(0xFFB5E800);
+  static const Color _purple     = Color(0xFF7B2FBE);
   static const Color _white      = Color(0xFFFFFFFF);
   static const Color _grey       = Color(0xFF888888);
-  static const Color _trailColor = Color(0xFFB5E800);   // lime trail on map
 
   // ── State ─────────────────────────────────────────────────────────────────
   List<LocationHistoryEntry> _entries = [];
@@ -71,7 +70,7 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
   // ── Data loading ──────────────────────────────────────────────────────────
 
   Future<void> _load() async {
-    debugPrint('=== HISTORY PAGE loading for patientId: ${widget.patientId} ===');
+
     setState(() => _isLoading = true);
 
     final (from, to) = _selectedRange.range;
@@ -106,33 +105,22 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
       _highlighted = entries.isNotEmpty ? entries.last : null;
     });
 
-    if (_mapReady && entries.length > 1) _fitTrail();
+    if (_mapReady && entries.isNotEmpty) _centerOnLatest();
   }
 
   // ── Map helpers ───────────────────────────────────────────────────────────
 
   LatLng _toLatLng(LocationHistoryEntry e) => LatLng(e.latitude, e.longitude);
 
-  void _fitTrail() {
+  void _centerOnLatest() {
     if (_entries.isEmpty || !_mapReady) return;
-    final lats = _entries.map((e) => e.latitude);
-    final lngs = _entries.map((e) => e.longitude);
-    _mapController.fitCamera(
-      CameraFit.bounds(
-        bounds: LatLngBounds(
-          LatLng(lats.reduce((a, b) => a < b ? a : b),
-              lngs.reduce((a, b) => a < b ? a : b)),
-          LatLng(lats.reduce((a, b) => a > b ? a : b),
-              lngs.reduce((a, b) => a > b ? a : b)),
-        ),
-        padding: const EdgeInsets.fromLTRB(40, 80, 40, 200),
-      ),
-    );
+    final latest = _highlighted ?? _entries.last;
+    _mapController.move(_toLatLng(latest), 16.0);
   }
 
   void _jumpTo(LocationHistoryEntry entry) {
     setState(() => _highlighted = entry);
-    if (_mapReady) _mapController.move(_toLatLng(entry), 17.0);
+    if (_mapReady) _mapController.move(_toLatLng(entry), 16.0);
     _tabController.animateTo(0);
   }
 
@@ -317,15 +305,14 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
   }
 
   // ── Map tab ───────────────────────────────────────────────────────────────
+  // Shows only the most recent location as a single pin — no trail, no dots.
+  // The timeline tab is the right place for browsing history entries.
 
   Widget _buildMapTab() {
-    final center = _highlighted != null
-        ? _toLatLng(_highlighted!)
-        : _entries.isNotEmpty
-        ? _toLatLng(_entries.last)
+    final latest = _highlighted ?? (_entries.isNotEmpty ? _entries.last : null);
+    final center = latest != null
+        ? _toLatLng(latest)
         : const LatLng(19.0760, 72.8777);
-
-    final trailPoints = _entries.map(_toLatLng).toList();
 
     return Stack(
       children: [
@@ -333,12 +320,12 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
           mapController: _mapController,
           options: MapOptions(
             initialCenter: center,
-            initialZoom: 15.0,
+            initialZoom: 16.0,
             minZoom: 8.0,
             maxZoom: 20.0,
             onMapReady: () {
               setState(() => _mapReady = true);
-              if (_entries.length > 1) _fitTrail();
+              if (latest != null) _centerOnLatest();
             },
           ),
           children: [
@@ -348,75 +335,59 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
               userAgentPackageName: 'com.yourteam.neuroguard',
               maxNativeZoom: 19,
             ),
-            if (trailPoints.length > 1)
-              PolylineLayer(polylines: [
-                Polyline(
-                  points: trailPoints,
-                  color: _trailColor.withOpacity(0.8),
-                  strokeWidth: 4.0,
-                  borderColor: Colors.black.withOpacity(0.35),
-                  borderStrokeWidth: 1.5,
-                ),
-              ]),
-            MarkerLayer(
-              markers: _entries.asMap().entries.map((kv) {
-                final idx = kv.key;
-                final entry = kv.value;
-                final isFirst = idx == 0;
-                final isLast = idx == _entries.length - 1;
-                final isHigh = _highlighted == entry;
-
-                Color dotColor = _lime.withOpacity(0.6);
-                double size = 9;
-
-                if (isFirst) { dotColor = _purple;  size = 13; }
-                if (isLast)  { dotColor = _lime;     size = 15; }
-                if (isHigh && !isLast && !isFirst) {
-                  dotColor = _white;
-                  size = 13;
-                }
-
-                return Marker(
-                  point: _toLatLng(entry),
-                  width: size + 14,
-                  height: size + 14,
-                  child: GestureDetector(
-                    onTap: () => setState(() => _highlighted = entry),
-                    child: Center(
-                      child: Container(
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                          color: dotColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: Colors.black.withOpacity(0.5),
-                              width: 1.5),
-                          boxShadow: (isHigh || isLast)
-                              ? [
-                            BoxShadow(
-                              color: dotColor.withOpacity(0.7),
-                              blurRadius: 10,
-                              spreadRadius: 3,
-                            )
-                          ]
-                              : null,
+            if (latest != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _toLatLng(latest),
+                    width: 56,
+                    height: 56,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Outer pulse ring
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: _lime.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: _lime.withOpacity(0.4), width: 1.5),
+                          ),
                         ),
-                      ),
+                        // Inner solid dot
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: _lime,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Colors.black, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _lime.withOpacity(0.6),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }).toList(),
-            ),
+                ],
+              ),
           ],
         ),
 
-        // Fit-to-trail
+        // Centre-on-location button
         Positioned(
           top: 12,
           left: 12,
           child: GestureDetector(
-            onTap: _fitTrail,
+            onTap: _centerOnLatest,
             child: Container(
               width: 40,
               height: 40,
@@ -430,26 +401,19 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
                       blurRadius: 8)
                 ],
               ),
-              child: const Icon(Icons.fit_screen_rounded,
+              child: const Icon(Icons.my_location_rounded,
                   color: _white, size: 20),
             ),
           ),
         ),
 
-        // Legend
-        Positioned(
-          top: 12,
-          right: 12,
-          child: _buildLegend(),
-        ),
-
         // Selected fix card
-        if (_highlighted != null)
+        if (latest != null)
           Positioned(
             bottom: 16,
             left: 12,
             right: 12,
-            child: _buildSelectedFixCard(_highlighted!),
+            child: _buildSelectedFixCard(latest),
           ),
       ],
     );
@@ -509,46 +473,6 @@ class _LocationHistoryPageState extends State<LocationHistoryPage>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLegend() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _cardBorder),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.5), blurRadius: 8)
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _legendRow(_purple, 'Start'),
-          const SizedBox(height: 5),
-          _legendRow(_lime, 'Latest'),
-          const SizedBox(height: 5),
-          _legendRow(_lime.withOpacity(0.5), 'Path'),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendRow(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-            width: 9,
-            height: 9,
-            decoration:
-            BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(color: _grey, fontSize: 10)),
-      ],
     );
   }
 

@@ -26,7 +26,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/alert_model.dart';
 import 'alert_service.dart';
-import 'location_history_service.dart';   // ← NEW
 
 /// LocationService — Patient Side
 class LocationService {
@@ -36,10 +35,10 @@ class LocationService {
   LocationService._internal();
 
   // ─── Private State ────────────────────────────────────────────────────────
-  StreamSubscription<Position>?         _positionStream;
+  StreamSubscription<Position>? _positionStream;
   StreamSubscription<DocumentSnapshot>? _docListener;
-  bool    _isTracking             = false;
-  bool    _notificationsInitialised = false;
+  bool _isTracking = false;
+  bool _notificationsInitialised = false;
   String? _activePatientId;
 
   bool _safeZoneInitialised = false;
@@ -48,8 +47,8 @@ class LocationService {
   static const _breachAlertCooldown = Duration(minutes: 5);
 
   static const LocationSettings _locationSettings = LocationSettings(
-    accuracy:       LocationAccuracy.best,
-    distanceFilter: 10,
+    accuracy: LocationAccuracy.bestForNavigation,
+    distanceFilter: 20,
   );
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -59,14 +58,14 @@ class LocationService {
 
   // ─── Notifications ────────────────────────────────────────────────────────
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   // ──────────────────────────────────────────────────────────────────────────
   // STEP 1 — Initialise
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
-    if (_notificationsInitialised) return;   // already done — skip entirely
+    if (_notificationsInitialised) return; // already done — skip entirely
     _notificationsInitialised = true;
     await _initNotifications();
     await _requestPermissions();
@@ -74,9 +73,10 @@ class LocationService {
 
   Future<void> _initNotifications() async {
     const AndroidInitializationSettings androidSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings settings =
-    InitializationSettings(android: androidSettings);
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+    );
     await _notificationsPlugin.initialize(settings);
   }
 
@@ -105,11 +105,16 @@ class LocationService {
   Future<PermissionStatus> getPermissionStatus() async {
     final p = await Geolocator.checkPermission();
     switch (p) {
-      case LocationPermission.always:        return PermissionStatus.alwaysAllowed;
-      case LocationPermission.whileInUse:    return PermissionStatus.foregroundOnly;
-      case LocationPermission.denied:        return PermissionStatus.denied;
-      case LocationPermission.deniedForever: return PermissionStatus.permanentlyDenied;
-      default:                               return PermissionStatus.unknown;
+      case LocationPermission.always:
+        return PermissionStatus.alwaysAllowed;
+      case LocationPermission.whileInUse:
+        return PermissionStatus.foregroundOnly;
+      case LocationPermission.denied:
+        return PermissionStatus.denied;
+      case LocationPermission.deniedForever:
+        return PermissionStatus.permanentlyDenied;
+      default:
+        return PermissionStatus.unknown;
     }
   }
 
@@ -128,7 +133,7 @@ class LocationService {
       if (!hasPermission) return;
     }
 
-    _isTracking      = true;
+    _isTracking = true;
     _activePatientId = patientId;
 
     await _refreshSafeZoneCache(patientId);
@@ -140,12 +145,14 @@ class LocationService {
         .listen(_onDocSnapshot);
 
     _positionStream =
-        Geolocator.getPositionStream(locationSettings: _locationSettings)
-            .listen(
-              (Position pos) => _onNewPosition(patientId, pos),
+        Geolocator.getPositionStream(
+          locationSettings: _locationSettings,
+        ).listen(
+          (Position pos) => _onNewPosition(patientId, pos),
           onError: (_) async {
             final last = await Geolocator.getLastKnownPosition();
-            if (last != null) await _pushPosition(patientId, last, isStale: true);
+            if (last != null)
+              await _pushPosition(patientId, last, isStale: true);
           },
         );
 
@@ -164,15 +171,15 @@ class LocationService {
   void stopTracking() {
     _positionStream?.cancel();
     _docListener?.cancel();
-    _positionStream        = null;
-    _docListener           = null;
-    _isTracking            = false;
-    _activePatientId       = null;
-    _cachedSafeZone        = null;
-    _safeZoneInitialised   = false;
+    _positionStream = null;
+    _docListener = null;
+    _isTracking = false;
+    _activePatientId = null;
+    _cachedSafeZone = null;
+    _safeZoneInitialised = false;
   }
 
-  bool    get isTracking      => _isTracking;
+  bool get isTracking => _isTracking;
   String? get activePatientId => _activePatientId;
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -180,49 +187,36 @@ class LocationService {
   // ──────────────────────────────────────────────────────────────────────────
 
   void _onNewPosition(String patientId, Position pos) {
+    // Discard fixes worse than 50 m accuracy — they're GPS noise
+    if (pos.accuracy > 50) return;
     _pushPosition(patientId, pos, isStale: false);
   }
 
   Future<void> _pushPosition(
-      String patientId,
-      Position pos, {
-        required bool isStale,
-      }) async {
+    String patientId,
+    Position pos, {
+    required bool isStale,
+  }) async {
     try {
       // Push live location to Firestore (for caregiver's map view)
-      await _db.collection('users').doc(patientId).set(
-        {
-          'liveLocation': {
-            'latitude':  pos.latitude,
-            'longitude': pos.longitude,
-            'accuracy':  pos.accuracy,
-            'timestamp': FieldValue.serverTimestamp(),
-            'speed':     pos.speed,
-            'heading':   pos.heading,
-            'isStale':   isStale,
-          }
+      await _db.collection('users').doc(patientId).set({
+        'liveLocation': {
+          'latitude': pos.latitude,
+          'longitude': pos.longitude,
+          'accuracy': pos.accuracy,
+          'timestamp': FieldValue.serverTimestamp(),
+          'speed': pos.speed,
+          'heading': pos.heading,
+          'isStale': isStale,
         },
-        SetOptions(merge: true),
-      );
-
-      // ── NEW: also persist to local SQLite for the history trail ──────────
-      // This runs in parallel with the Firestore write; failures are silenced
-      // because the periodic 15-min capture is the primary history driver.
-      LocationHistoryService().saveEntry(
-        LocationHistoryEntry(
-          patientId:  patientId,
-          latitude:   pos.latitude,
-          longitude:  pos.longitude,
-          accuracy:   pos.accuracy,
-          speed:      pos.speed.clamp(0.0, double.infinity),
-          recordedAt: DateTime.now(),
-          synced:     false,  // will be synced by background sync timer
-        ),
-      );
+      }, SetOptions(merge: true));
 
       _checkSafeZoneFromCache(patientId, pos);
     } catch (e) {
-      assert(() { print('[LocationService] Push failed: $e'); return true; }());
+      assert(() {
+        print('[LocationService] Push failed: $e');
+        return true;
+      }());
     }
   }
 
@@ -237,11 +231,11 @@ class LocationService {
     _cachedSafeZone = sz == null
         ? null
         : _CachedSafeZone(
-      centerLat:     (sz['centerLat']    as num).toDouble(),
-      centerLng:     (sz['centerLng']    as num).toDouble(),
-      radiusMeters:  (sz['radiusMeters'] as num).toDouble(),
-      wasInsideZone: sz['isInsideZone']  as bool? ?? true,
-    );
+            centerLat: (sz['centerLat'] as num).toDouble(),
+            centerLng: (sz['centerLng'] as num).toDouble(),
+            radiusMeters: (sz['radiusMeters'] as num).toDouble(),
+            wasInsideZone: sz['isInsideZone'] as bool? ?? true,
+          );
   }
 
   Future<void> _refreshSafeZoneCache(String patientId) async {
@@ -258,35 +252,38 @@ class LocationService {
     if (!_safeZoneInitialised) return;
 
     final double dist = Geolocator.distanceBetween(
-      pos.latitude, pos.longitude,
-      cache.centerLat, cache.centerLng,
+      pos.latitude,
+      pos.longitude,
+      cache.centerLat,
+      cache.centerLng,
     );
     final bool isInside = dist <= cache.radiusMeters;
 
     if (isInside == cache.wasInsideZone) return;
 
     _cachedSafeZone = _CachedSafeZone(
-      centerLat:     cache.centerLat,
-      centerLng:     cache.centerLng,
-      radiusMeters:  cache.radiusMeters,
+      centerLat: cache.centerLat,
+      centerLng: cache.centerLng,
+      radiusMeters: cache.radiusMeters,
       wasInsideZone: isInside,
     );
 
-    _db.collection('users').doc(patientId).set(
-      {
-        'safeZone': {
-          'isInsideZone':       isInside,
-          'distanceFromCenter': dist,
-          'lastBreachTime':     isInside ? null : FieldValue.serverTimestamp(),
-        }
-      },
-      SetOptions(merge: true),
-    ).then((_) async {
-      if (!isInside) {
-        await _logBreachEvent(patientId, pos, dist);
-        await _sendBreachAlerts(patientId, dist);
-      }
-    });
+    _db
+        .collection('users')
+        .doc(patientId)
+        .set({
+          'safeZone': {
+            'isInsideZone': isInside,
+            'distanceFromCenter': dist,
+            'lastBreachTime': isInside ? null : FieldValue.serverTimestamp(),
+          },
+        }, SetOptions(merge: true))
+        .then((_) async {
+          if (!isInside) {
+            await _logBreachEvent(patientId, pos, dist);
+            await _sendBreachAlerts(patientId, dist);
+          }
+        });
   }
 
   Future<void> _sendBreachAlerts(String patientId, double distMeters) async {
@@ -304,8 +301,8 @@ class LocationService {
     await AlertService().send(
       patientId: patientId,
       alert: AlertModel(
-        type:     AlertType.geoFence,
-        message:  'Patient is $distStr outside the safe zone.',
+        type: AlertType.geoFence,
+        message: 'Patient is $distStr outside the safe zone.',
         severity: AlertSeverity.critical,
         metadata: {'distanceMeters': distMeters},
       ),
@@ -315,8 +312,9 @@ class LocationService {
     await AlertService().send(
       patientId: patientId,
       alert: AlertModel(
-        type:     AlertType.spyCall,
-        message:  'Patient is not in the safe zone. Do you want to make a quick spy call?',
+        type: AlertType.spyCall,
+        message:
+            'Patient is not in the safe zone. Do you want to make a quick spy call?',
         severity: AlertSeverity.warning,
         metadata: {'distanceMeters': distMeters},
       ),
@@ -324,18 +322,21 @@ class LocationService {
   }
 
   Future<void> _logBreachEvent(
-      String patientId, Position pos, double dist) async {
+    String patientId,
+    Position pos,
+    double dist,
+  ) async {
     await _db
         .collection('users')
         .doc(patientId)
         .collection('breachEvents')
         .add({
-      'latitude':           pos.latitude,
-      'longitude':          pos.longitude,
-      'distanceFromCenter': dist,
-      'timestamp':          FieldValue.serverTimestamp(),
-      'acknowledged':       false,
-    });
+          'latitude': pos.latitude,
+          'longitude': pos.longitude,
+          'distanceFromCenter': dist,
+          'timestamp': FieldValue.serverTimestamp(),
+          'acknowledged': false,
+        });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -345,30 +346,36 @@ class LocationService {
   static Future<LocationSnapshot?> getPatientLocation(String patientId) async {
     try {
       final doc = await FirebaseFirestore.instance
-          .collection('users').doc(patientId).get();
+          .collection('users')
+          .doc(patientId)
+          .get();
       final data = doc.data();
       if (data == null || data['liveLocation'] == null) return null;
       return _parse(data['liveLocation'] as Map<String, dynamic>);
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   static Stream<LocationSnapshot?> streamPatientLocation(String patientId) {
     return FirebaseFirestore.instance
-        .collection('users').doc(patientId).snapshots()
+        .collection('users')
+        .doc(patientId)
+        .snapshots()
         .map((doc) {
-      final data = doc.data();
-      if (data == null || data['liveLocation'] == null) return null;
-      return _parse(data['liveLocation'] as Map<String, dynamic>);
-    });
+          final data = doc.data();
+          if (data == null || data['liveLocation'] == null) return null;
+          return _parse(data['liveLocation'] as Map<String, dynamic>);
+        });
   }
 
   static LocationSnapshot _parse(Map<String, dynamic> loc) => LocationSnapshot(
-    latitude:  (loc['latitude']  as num).toDouble(),
+    latitude: (loc['latitude'] as num).toDouble(),
     longitude: (loc['longitude'] as num).toDouble(),
-    accuracy:  (loc['accuracy']  as num?)?.toDouble() ?? 0.0,
+    accuracy: (loc['accuracy'] as num?)?.toDouble() ?? 0.0,
     timestamp: (loc['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    isStale:   loc['isStale']    as bool? ?? false,
-    speed:     (loc['speed']     as num?)?.toDouble() ?? 0.0,
+    isStale: loc['isStale'] as bool? ?? false,
+    speed: (loc['speed'] as num?)?.toDouble() ?? 0.0,
   );
 }
 
@@ -377,7 +384,7 @@ class _CachedSafeZone {
   final double centerLat;
   final double centerLng;
   final double radiusMeters;
-  final bool   wasInsideZone;
+  final bool wasInsideZone;
   const _CachedSafeZone({
     required this.centerLat,
     required this.centerLng,
@@ -389,12 +396,12 @@ class _CachedSafeZone {
 // ─── Public Models ────────────────────────────────────────────────────────────
 
 class LocationSnapshot {
-  final double   latitude;
-  final double   longitude;
-  final double   accuracy;
+  final double latitude;
+  final double longitude;
+  final double accuracy;
   final DateTime timestamp;
-  final bool     isStale;
-  final double   speed;
+  final bool isStale;
+  final double speed;
 
   const LocationSnapshot({
     required this.latitude,
@@ -402,7 +409,7 @@ class LocationSnapshot {
     required this.accuracy,
     required this.timestamp,
     this.isStale = false,
-    this.speed   = 0.0,
+    this.speed = 0.0,
   });
 
   int get minutesAgo => DateTime.now().difference(timestamp).inMinutes;
@@ -414,7 +421,7 @@ class LocationSnapshot {
   // accurate from the moment the GPS fix lands.
   String get freshnessLabel {
     final mins = minutesAgo;
-    if (mins < 1)  return 'Just now';
+    if (mins < 1) return 'Just now';
     if (mins < 60) return '${mins}m ago';
     final hours = (mins / 60).floor();
     if (hours < 24) return '${hours}h ${mins % 60}m ago';
