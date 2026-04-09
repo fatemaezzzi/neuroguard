@@ -60,8 +60,8 @@ class PocketCheckService {
   // Dead-zone widened: hard-case phones produce intermediate scores because
   // the case absorbs motor energy, compressing variance and peak toward the
   // body range. A wider UNKNOWN band prevents false ON_PERSON on a table.
-  static const double _tableThreshold  = 0.75;   // was 0.72
-  static const double _personThreshold = 0.40;   // was 0.55 — widened dead-zone
+  static const double _tableThreshold  = 0.60;   // was 0.72
+  static const double _personThreshold = 0.30;   // was 0.55 — widened dead-zone
 
   // Individual metric bounds (used for 0-1 normalisation)
   //
