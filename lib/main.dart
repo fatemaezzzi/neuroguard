@@ -198,6 +198,7 @@ class NeuroGuardApp extends StatelessWidget {
         ),
         home: const AuthGate(),
       ),
+
     );
   }
 }

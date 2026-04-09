@@ -1,23 +1,35 @@
 // lib/core/services/location_service.dart
 //
-// LocationService — Patient Side
+// LocationService — Patient Side (v2 — Write-Optimised)
 // ─────────────────────────────────────────────────────────────────────────────
-// CHANGES FROM PREVIOUS VERSION
-//   • Integrates LocationHistoryService for offline-first history capture.
-//     startTracking() now also calls
-//     LocationHistoryService.startPeriodicTracking(), which saves a GPS fix
-//     to SQLite every 15 minutes regardless of network state.
-//   • stopTracking() also calls LocationHistoryService.stopPeriodicTracking().
-//   • _pushPosition() also calls LocationHistoryService.saveEntry() so every
-//     Firestore-pushed fix is simultaneously stored locally (for the trail).
-//   • freshnessLabel now uses "Just now" for < 1 min (was already correct),
-//     so the "Updated" chip in TrackerPage always reflects real time elapsed
-//     since the LAST GPS fix actually written — not the Firestore server clock.
-//   • Accuracy label now includes a qualitative descriptor: Excellent/Good/Low.
+//
+// WHAT CHANGED FROM v1
+//
+//  ① LIVE-LOCATION WRITE THROTTLE
+//      _pushPosition() now gates Firestore writes to at most once every
+//      [_liveLocationMinInterval] (default 60 seconds).
+//
+//      The patient's GPS stream still fires on every 20-metre movement
+//      (distanceFilter: 20) — this is necessary for accurate safe-zone
+//      breach detection which runs locally via _checkSafeZoneFromCache().
+//      However, NOT every GPS fix needs to travel to Firestore. The caregiver's
+//      map refreshes at human-visible speed; a 60-second cadence (≈ 1 write/min)
+//      is indistinguishable from real-time on a map and cuts Firestore writes
+//      by ~95 % versus per-fix writing.
+//
+//      Exception: a breach event (patient exits safe zone) always writes
+//      immediately regardless of the throttle. The throttle timer is reset
+//      at that point so the next routine write comes after a full interval.
+//
+//  ② NO OTHER LOGIC CHANGED
+//      Safe-zone cache, breach detection, alert sending, caregiver read API,
+//      permission handling — all unchanged.
 //
 // ARCHITECTURE NOTES
-//   • All other logic (stream setup, safe-zone cache, breach alerts) is
-//     UNCHANGED from the previous version — only additive wiring.
+//   • History capture / Firestore sync cadence is owned by LocationHistoryService
+//     (see that file). LocationService does NOT call LocationHistoryService.
+//   • Geofence breach writes (_logBreachEvent, _checkSafeZoneFromCache) bypass
+//     the throttle and always go immediately — they are rare and critical.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -27,7 +39,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/alert_model.dart';
 import 'alert_service.dart';
 
-/// LocationService — Patient Side
 class LocationService {
   // ─── Singleton ────────────────────────────────────────────────────────────
   static final LocationService _instance = LocationService._internal();
@@ -56,16 +67,22 @@ class LocationService {
   // ─── In-memory safe zone cache ────────────────────────────────────────────
   _CachedSafeZone? _cachedSafeZone;
 
+  // ─── Live-location write throttle ────────────────────────────────────────
+  // Limits liveLocation Firestore writes to at most once per interval.
+  // Breach events always bypass this gate.
+  static const Duration _liveLocationMinInterval = Duration(seconds: 60);
+  DateTime? _lastLiveLocationWrite;
+
   // ─── Notifications ────────────────────────────────────────────────────────
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin();
 
   // ──────────────────────────────────────────────────────────────────────────
   // STEP 1 — Initialise
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
-    if (_notificationsInitialised) return; // already done — skip entirely
+    if (_notificationsInitialised) return;
     _notificationsInitialised = true;
     await _initNotifications();
     await _requestPermissions();
@@ -73,7 +90,7 @@ class LocationService {
 
   Future<void> _initNotifications() async {
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
     );
@@ -94,10 +111,7 @@ class LocationService {
       if (permission == LocationPermission.denied) return false;
     }
     if (permission == LocationPermission.deniedForever) return false;
-
-    if (permission != LocationPermission.always) {
-      return false;
-    }
+    if (permission != LocationPermission.always) return false;
 
     return true;
   }
@@ -126,8 +140,6 @@ class LocationService {
     if (_isTracking && _activePatientId == patientId) return;
     if (_isTracking) stopTracking();
 
-    // Only check permissions if we haven't confirmed them yet this session.
-    // Geolocator.checkPermission() is a binder call that adds ~80ms each time.
     if (!_isTracking) {
       final hasPermission = await _requestPermissions();
       if (!hasPermission) return;
@@ -135,6 +147,7 @@ class LocationService {
 
     _isTracking = true;
     _activePatientId = patientId;
+    _lastLiveLocationWrite = null; // reset throttle on new session
 
     await _refreshSafeZoneCache(patientId);
 
@@ -148,18 +161,14 @@ class LocationService {
         Geolocator.getPositionStream(
           locationSettings: _locationSettings,
         ).listen(
-          (Position pos) => _onNewPosition(patientId, pos),
+              (Position pos) => _onNewPosition(patientId, pos),
           onError: (_) async {
             final last = await Geolocator.getLastKnownPosition();
-            if (last != null)
+            if (last != null) {
               await _pushPosition(patientId, last, isStale: true);
+            }
           },
         );
-
-    // NOTE: location history capture is driven by BackgroundTaskHandler's
-    // tick counter — NOT by a Timer.periodic here. Starting a timer in this
-    // isolate too would create a double-capture race condition because each
-    // Dart isolate gets its own separate LocationHistoryService instance.
   }
 
   Future<void> startTrackingForTesting({
@@ -177,6 +186,7 @@ class LocationService {
     _activePatientId = null;
     _cachedSafeZone = null;
     _safeZoneInitialised = false;
+    _lastLiveLocationWrite = null;
   }
 
   bool get isTracking => _isTracking;
@@ -187,18 +197,34 @@ class LocationService {
   // ──────────────────────────────────────────────────────────────────────────
 
   void _onNewPosition(String patientId, Position pos) {
-    // Discard fixes worse than 50 m accuracy — they're GPS noise
+    // Discard fixes worse than 50 m accuracy — they're GPS noise.
     if (pos.accuracy > 50) return;
     _pushPosition(patientId, pos, isStale: false);
   }
 
   Future<void> _pushPosition(
-    String patientId,
-    Position pos, {
-    required bool isStale,
-  }) async {
+      String patientId,
+      Position pos, {
+        required bool isStale,
+      }) async {
+    // ── Throttle gate ─────────────────────────────────────────────────────
+    // Skip Firestore write if we pushed recently (within _liveLocationMinInterval).
+    // Always run the local safe-zone check regardless of the gate.
+    //
+    // Breach events (isInsideZone flips false) bypass this gate — see
+    // _checkSafeZoneFromCache which writes directly without going through here.
+    final now = DateTime.now();
+    final lastWrite = _lastLiveLocationWrite;
+    final shouldWrite = lastWrite == null ||
+        now.difference(lastWrite) >= _liveLocationMinInterval;
+
+    // Always check safe zone locally — this is cheap and must not be throttled.
+    _checkSafeZoneFromCache(patientId, pos);
+
+    if (!shouldWrite) return; // skip Firestore write this cycle
+
     try {
-      // Push live location to Firestore (for caregiver's map view)
+      _lastLiveLocationWrite = now;
       await _db.collection('users').doc(patientId).set({
         'liveLocation': {
           'latitude': pos.latitude,
@@ -210,9 +236,9 @@ class LocationService {
           'isStale': isStale,
         },
       }, SetOptions(merge: true));
-
-      _checkSafeZoneFromCache(patientId, pos);
     } catch (e) {
+      // Roll back the timestamp so the next movement attempt tries again.
+      _lastLiveLocationWrite = lastWrite;
       assert(() {
         print('[LocationService] Push failed: $e');
         return true;
@@ -231,11 +257,11 @@ class LocationService {
     _cachedSafeZone = sz == null
         ? null
         : _CachedSafeZone(
-            centerLat: (sz['centerLat'] as num).toDouble(),
-            centerLng: (sz['centerLng'] as num).toDouble(),
-            radiusMeters: (sz['radiusMeters'] as num).toDouble(),
-            wasInsideZone: sz['isInsideZone'] as bool? ?? true,
-          );
+      centerLat: (sz['centerLat'] as num).toDouble(),
+      centerLng: (sz['centerLng'] as num).toDouble(),
+      radiusMeters: (sz['radiusMeters'] as num).toDouble(),
+      wasInsideZone: sz['isInsideZone'] as bool? ?? true,
+    );
   }
 
   Future<void> _refreshSafeZoneCache(String patientId) async {
@@ -268,22 +294,26 @@ class LocationService {
       wasInsideZone: isInside,
     );
 
+    // Breach/return events always write immediately — reset the throttle
+    // so the next routine live-location write follows a full interval after.
+    _lastLiveLocationWrite = DateTime.now();
+
     _db
         .collection('users')
         .doc(patientId)
         .set({
-          'safeZone': {
-            'isInsideZone': isInside,
-            'distanceFromCenter': dist,
-            'lastBreachTime': isInside ? null : FieldValue.serverTimestamp(),
-          },
-        }, SetOptions(merge: true))
+      'safeZone': {
+        'isInsideZone': isInside,
+        'distanceFromCenter': dist,
+        'lastBreachTime': isInside ? null : FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true))
         .then((_) async {
-          if (!isInside) {
-            await _logBreachEvent(patientId, pos, dist);
-            await _sendBreachAlerts(patientId, dist);
-          }
-        });
+      if (!isInside) {
+        await _logBreachEvent(patientId, pos, dist);
+        await _sendBreachAlerts(patientId, dist);
+      }
+    });
   }
 
   Future<void> _sendBreachAlerts(String patientId, double distMeters) async {
@@ -314,7 +344,7 @@ class LocationService {
       alert: AlertModel(
         type: AlertType.spyCall,
         message:
-            'Patient is not in the safe zone. Do you want to make a quick spy call?',
+        'Patient is not in the safe zone. Do you want to make a quick spy call?',
         severity: AlertSeverity.warning,
         metadata: {'distanceMeters': distMeters},
       ),
@@ -322,25 +352,25 @@ class LocationService {
   }
 
   Future<void> _logBreachEvent(
-    String patientId,
-    Position pos,
-    double dist,
-  ) async {
+      String patientId,
+      Position pos,
+      double dist,
+      ) async {
     await _db
         .collection('users')
         .doc(patientId)
         .collection('breachEvents')
         .add({
-          'latitude': pos.latitude,
-          'longitude': pos.longitude,
-          'distanceFromCenter': dist,
-          'timestamp': FieldValue.serverTimestamp(),
-          'acknowledged': false,
-        });
+      'latitude': pos.latitude,
+      'longitude': pos.longitude,
+      'distanceFromCenter': dist,
+      'timestamp': FieldValue.serverTimestamp(),
+      'acknowledged': false,
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // STEP 6 — Caregiver Read API
+  // STEP 6 — Caregiver Read API  (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
 
   static Future<LocationSnapshot?> getPatientLocation(String patientId) async {
@@ -363,10 +393,10 @@ class LocationService {
         .doc(patientId)
         .snapshots()
         .map((doc) {
-          final data = doc.data();
-          if (data == null || data['liveLocation'] == null) return null;
-          return _parse(data['liveLocation'] as Map<String, dynamic>);
-        });
+      final data = doc.data();
+      if (data == null || data['liveLocation'] == null) return null;
+      return _parse(data['liveLocation'] as Map<String, dynamic>);
+    });
   }
 
   static LocationSnapshot _parse(Map<String, dynamic> loc) => LocationSnapshot(
@@ -414,11 +444,6 @@ class LocationSnapshot {
 
   int get minutesAgo => DateTime.now().difference(timestamp).inMinutes;
 
-  // ── FIXED: freshnessLabel now computes from local timestamp ───────────────
-  // Previously the Firestore serverTimestamp() could be 0-2 minutes behind
-  // the device clock on first write, making "Updated" show "1m ago"
-  // immediately. We now use the device-local DateTime.now() diff, which is
-  // accurate from the moment the GPS fix lands.
   String get freshnessLabel {
     final mins = minutesAgo;
     if (mins < 1) return 'Just now';
@@ -428,9 +453,6 @@ class LocationSnapshot {
     return '${(hours / 24).floor()}d ago';
   }
 
-  // ── IMPROVED: accuracy chip now shows quality descriptor ─────────────────
-  // The caregiver sees "±16m" and has no idea if that's good or bad.
-  // Now it reads "±16m · Good" which is self-explanatory.
   String get accuracyLabel {
     if (accuracy <= 0) return '—';
     final meters = accuracy.toStringAsFixed(0);
@@ -440,7 +462,6 @@ class LocationSnapshot {
     return '±${meters}m · Poor';
   }
 
-  /// Short form for the status card chip (keeps the chip narrow).
   String get accuracyShort {
     if (accuracy <= 0) return '—';
     return '±${accuracy.toStringAsFixed(0)}m';

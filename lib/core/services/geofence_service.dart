@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:neuroguard/core/models/alert_model.dart';
 import 'package:neuroguard/core/services/alert_service.dart';
+import 'package:neuroguard/core/services/escalation_service.dart';
 import 'package:geolocator/geolocator.dart';
-
 
 // GeofenceService — Caregiver Side
 /// Responsibilities:
@@ -15,7 +15,6 @@ import 'package:geolocator/geolocator.dart';
 ///        "Not supervised" — escalate to red alert in the app
 ///   4. Save caregiver's acknowledgement back to Firestore.
 ///   5. Provide helper methods to save/load safe zone settings.
-
 
 class GeofenceService {
   // ─── Singleton ────────────────────────────────────────────────────────────
@@ -34,14 +33,14 @@ class GeofenceService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   static const int _breachNotificationId = 1001;
   static const String _breachChannelId = 'safezone_breach';
   static const String _breachChannelName = 'Safe Zone Alerts';
 
   final StreamController<GeofenceEvent> _eventController =
-  StreamController<GeofenceEvent>.broadcast();
+      StreamController<GeofenceEvent>.broadcast();
 
   Stream<GeofenceEvent> get eventStream => _eventController.stream;
 
@@ -50,7 +49,7 @@ class GeofenceService {
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialise() async {
-    if (_notificationsInitialised) return;   // singleton — run once only
+    if (_notificationsInitialised) return; // singleton — run once only
     _notificationsInitialised = true;
     await _setupNotificationChannel();
   }
@@ -66,22 +65,25 @@ class GeofenceService {
     );
 
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-    _notificationsPlugin.resolvePlatformSpecificImplementation
-    <AndroidFlutterLocalNotificationsPlugin>();
+        _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
 
     await androidPlugin?.createNotificationChannel(channel);
 
     const AndroidInitializationSettings androidSettings =
-    AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings initSettings =
-    InitializationSettings(android: androidSettings);
+    const InitializationSettings initSettings = InitializationSettings(
+      android: androidSettings,
+    );
 
     await _notificationsPlugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationResponse,
       onDidReceiveBackgroundNotificationResponse:
-      _onBackgroundNotificationResponse,
+          _onBackgroundNotificationResponse,
     );
   }
 
@@ -110,7 +112,9 @@ class GeofenceService {
   }
 
   Future<void> _handleDocumentUpdate(
-      DocumentSnapshot snapshot, String patientId) async {
+    DocumentSnapshot snapshot,
+    String patientId,
+  ) async {
     final data = snapshot.data() as Map<String, dynamic>?;
     if (data == null) return;
 
@@ -125,15 +129,17 @@ class GeofenceService {
 
     // Don't re-fire breach events during a supervised outing window.
     final Timestamp? supervisedUntilTs =
-    safeZone['supervisedUntil'] as Timestamp?;
-    final bool inSupervisedWindow = supervisedUntilTs != null &&
+        safeZone['supervisedUntil'] as Timestamp?;
+    final bool inSupervisedWindow =
+        supervisedUntilTs != null &&
         supervisedUntilTs.toDate().isAfter(DateTime.now());
 
     if (_wasInsideZone && !isInsideZone) {
       _wasInsideZone = false;
       _supervisedCooldown = false; // reset for new breach
 
-      if (inSupervisedWindow) return; // caregiver already acknowledged this outing
+      if (inSupervisedWindow)
+        return; // caregiver already acknowledged this outing
 
       // Write breach event — this is what acknowledgeBreachAsSafe queries
       await _db
@@ -141,11 +147,11 @@ class GeofenceService {
           .doc(patientId)
           .collection('breachEvents')
           .add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'acknowledged': false,
-        'distanceFromCenter': distance,
-        'radiusMeters': radius,
-      });
+            'timestamp': FieldValue.serverTimestamp(),
+            'acknowledged': false,
+            'distanceFromCenter': distance,
+            'radiusMeters': radius,
+          });
 
       final event = GeofenceEvent(
         patientId: patientId,
@@ -157,17 +163,19 @@ class GeofenceService {
 
       _eventController.add(event);
 
-      // FCM push to caregiver via AlertService
+      // FCM push to caregiver via AlertService + begin escalation chain
       AlertService().send(
         patientId: patientId,
         alert: AlertModel(
           type: AlertType.geoFence,
           message: 'Patient is outside the safe zone.',
           severity: AlertSeverity.critical,
-          metadata: {
-            'distanceFromCenter': distance,
-            'radiusMeters': radius,
-          },
+          metadata: {'distanceFromCenter': distance, 'radiusMeters': radius},
+        ),
+        onEscalationBegin: (eid, a) => EscalationService().begin(
+          patientId: patientId,
+          alert: a,
+          escalationId: eid,
         ),
       );
 
@@ -198,38 +206,39 @@ class GeofenceService {
 
   Future<void> _showBreachNotification(GeofenceEvent event) async {
     final int distanceMeters = event.distanceFromCenter.round();
-    final int outsideBy =
-    (event.distanceFromCenter - event.radiusMeters).round();
+    final int outsideBy = (event.distanceFromCenter - event.radiusMeters)
+        .round();
 
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      _breachChannelId,
-      _breachChannelName,
-      channelDescription: 'Patient safe zone alerts',
-      importance: Importance.high,
-      priority: Priority.high,
-      ticker: 'Safe Zone Alert',
-      styleInformation: BigTextStyleInformation(
-        'Patient is approximately ${outsideBy}m outside their safe zone.\n'
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          _breachChannelId,
+          _breachChannelName,
+          channelDescription: 'Patient safe zone alerts',
+          importance: Importance.high,
+          priority: Priority.high,
+          ticker: 'Safe Zone Alert',
+          styleInformation: BigTextStyleInformation(
+            'Patient is approximately ${outsideBy}m outside their safe zone.\n'
             'Total distance from home: ${distanceMeters}m\n\n'
             'Is this a supervised outing?',
-        contentTitle: 'Patient Outside Safe Zone',
-        summaryText: 'NeuroGuard Alert',
-      ),
-      actions: <AndroidNotificationAction>[
-        const AndroidNotificationAction(
-          'action_supervised',
-          'It\'s fine, supervised',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-        const AndroidNotificationAction(
-          'action_not_supervised',
-          'Not supervised — Alert',
-          showsUserInterface: true,
-          cancelNotification: true,
-        ),
-      ],
-    );
+            contentTitle: 'Patient Outside Safe Zone',
+            summaryText: 'NeuroGuard Alert',
+          ),
+          actions: <AndroidNotificationAction>[
+            const AndroidNotificationAction(
+              'action_supervised',
+              'It\'s fine, supervised',
+              showsUserInterface: false,
+              cancelNotification: true,
+            ),
+            const AndroidNotificationAction(
+              'action_not_supervised',
+              'Not supervised — Alert',
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        );
 
     await _notificationsPlugin.show(
       _breachNotificationId,
@@ -273,14 +282,14 @@ class GeofenceService {
           .limit(1)
           .get()
           .then((query) {
-        for (final doc in query.docs) {
-          doc.reference.update({
-            'acknowledged': true,
-            'acknowledgedAs': 'supervised',
-            'acknowledgedAt': FieldValue.serverTimestamp(),
+            for (final doc in query.docs) {
+              doc.reference.update({
+                'acknowledged': true,
+                'acknowledgedAs': 'supervised',
+                'acknowledgedAt': FieldValue.serverTimestamp(),
+              });
+            }
           });
-        }
-      });
     }
   }
 
@@ -298,8 +307,9 @@ class GeofenceService {
       await _db.collection('users').doc(patientId).set({
         'safeZone': {
           'supervisedUntil': Timestamp.fromDate(
-              DateTime.now().add(const Duration(minutes: 30))),
-        }
+            DateTime.now().add(const Duration(minutes: 30)),
+          ),
+        },
       }, SetOptions(merge: true));
 
       final query = await _db
@@ -320,13 +330,15 @@ class GeofenceService {
       }
 
       if (_currentPatientId != null) {
-        _eventController.add(GeofenceEvent(
-          patientId: _currentPatientId!,
-          type: GeofenceEventType.acknowledgedSafe,
-          distanceFromCenter: 0,
-          radiusMeters: 0,
-          timestamp: DateTime.now(),
-        ));
+        _eventController.add(
+          GeofenceEvent(
+            patientId: _currentPatientId!,
+            type: GeofenceEventType.acknowledgedSafe,
+            distanceFromCenter: 0,
+            radiusMeters: 0,
+            timestamp: DateTime.now(),
+          ),
+        );
       }
     } catch (_) {}
   }
@@ -343,7 +355,7 @@ class GeofenceService {
           'message': 'Patient is outside safe zone without supervision',
           'triggeredAt': FieldValue.serverTimestamp(),
           'resolved': false,
-        }
+        },
       }, SetOptions(merge: true));
 
       final query = await _db
@@ -364,20 +376,22 @@ class GeofenceService {
       }
 
       if (_currentPatientId != null) {
-        _eventController.add(GeofenceEvent(
-          patientId: _currentPatientId!,
-          type: GeofenceEventType.escalatedToRedAlert,
-          distanceFromCenter: 0,
-          radiusMeters: 0,
-          timestamp: DateTime.now(),
-        ));
+        _eventController.add(
+          GeofenceEvent(
+            patientId: _currentPatientId!,
+            type: GeofenceEventType.escalatedToRedAlert,
+            distanceFromCenter: 0,
+            radiusMeters: 0,
+            timestamp: DateTime.now(),
+          ),
+        );
       }
 
       // Immediate FCM + repeat every 10 minutes
       await _sendEscalationFcm(patientId);
       _repeatAlertTimer = Timer.periodic(
         const Duration(minutes: 10),
-            (_) => _sendEscalationFcm(patientId),
+        (_) => _sendEscalationFcm(patientId),
       );
     } catch (_) {}
   }
@@ -388,8 +402,13 @@ class GeofenceService {
       alert: AlertModel(
         type: AlertType.geoFence,
         message:
-        'Patient is unsupervised outside safe zone — open Locate to track them or use Spy Call to check in.',
+            'Patient is unsupervised outside safe zone — open Locate to track them or use Spy Call to check in.',
         severity: AlertSeverity.critical,
+      ),
+      onEscalationBegin: (eid, a) => EscalationService().begin(
+        patientId: patientId,
+        alert: a,
+        escalationId: eid,
       ),
     );
   }
@@ -415,7 +434,10 @@ class GeofenceService {
         final patLat = (loc['latitude'] as num).toDouble();
         final patLng = (loc['longitude'] as num).toDouble();
         distanceFromCenter = Geolocator.distanceBetween(
-          patLat, patLng, centerLat, centerLng,
+          patLat,
+          patLng,
+          centerLat,
+          centerLng,
         );
         isInsideZone = distanceFromCenter <= radiusMeters;
       }
@@ -429,7 +451,7 @@ class GeofenceService {
         'isInsideZone': isInsideZone,
         'distanceFromCenter': distanceFromCenter,
         'lastUpdated': FieldValue.serverTimestamp(),
-      }
+      },
     });
   }
 
@@ -444,8 +466,7 @@ class GeofenceService {
       centerLng: (sz['centerLng'] as num).toDouble(),
       radiusMeters: (sz['radiusMeters'] as num).toDouble(),
       isInsideZone: sz['isInsideZone'] ?? true,
-      distanceFromCenter:
-      (sz['distanceFromCenter'] as num?)?.toDouble() ?? 0.0,
+      distanceFromCenter: (sz['distanceFromCenter'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -461,7 +482,7 @@ class GeofenceService {
         radiusMeters: (sz['radiusMeters'] as num).toDouble(),
         isInsideZone: sz['isInsideZone'] ?? true,
         distanceFromCenter:
-        (sz['distanceFromCenter'] as num?)?.toDouble() ?? 0.0,
+            (sz['distanceFromCenter'] as num?)?.toDouble() ?? 0.0,
       );
     });
   }
@@ -513,12 +534,7 @@ class SafeZoneModel {
   }
 }
 
-enum GeofenceEventType {
-  exit,
-  enter,
-  acknowledgedSafe,
-  escalatedToRedAlert,
-}
+enum GeofenceEventType { exit, enter, acknowledgedSafe, escalatedToRedAlert }
 
 class GeofenceEvent {
   final String patientId;
