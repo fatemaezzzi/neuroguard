@@ -11,6 +11,9 @@ import 'package:neuroguard/features/shared/widgets/pocket_check_widget.dart';
 import 'package:neuroguard/main.dart' show activatePatientBackground, saveFcmToken;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:neuroguard/features/patient/spy_call_listener.dart';
+import 'package:neuroguard/core/services/alert_service.dart';
+import 'package:neuroguard/core/models/alert_model.dart';
+import 'package:neuroguard/core/services/escalation_service.dart';
 import 'package:neuroguard/features/shared/widgets/patient_medicine_strip.dart';
 import 'package:neuroguard/features/patient/patient_medicine_view_page.dart';
 
@@ -256,6 +259,11 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   Future<void> _confirmHelpMe() async {
+    if (_patientId.isEmpty) {
+      _toast('Please wait, loading your profile…');
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -275,18 +283,48 @@ class _PatientHomeState extends State<PatientHome> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('SEND',
-                style: TextStyle(
-                    color: crimsonRed, fontWeight: FontWeight.bold)),
+            child: Text(
+              'SEND',
+              style: TextStyle(color: crimsonRed, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
     );
 
-    if (confirmed == true && mounted) {
-      // TODO: trigger your actual emergency alert service here
-      _toast('Emergency alert sent to caregivers!');
+    if (confirmed != true || !mounted) return;
+
+    // ── 1. Fire emergency FCM + Firestore alert ──────────────────────────────
+    try {
+      await AlertService().send(
+        patientId: _patientId,
+        alert: AlertModel(
+          type:     AlertType.geoFence,   // reuses the caregiver-alert FCM channel
+          message:  'HELP ME pressed — patient needs immediate assistance.',
+          severity: AlertSeverity.critical,
+          metadata: const {'source': 'help_me_button'},
+        ),
+        onEscalationBegin: (escalationId, alert) =>
+            EscalationService().begin(
+              patientId:    _patientId,
+              alert:        alert,
+              escalationId: escalationId,
+            ),
+      );
+    } catch (e) {
+      debugPrint('[HelpMe] Alert send failed: $e');
+      // Still navigate — don't block the patient if the network blips
     }
+
+    if (!mounted) return;
+
+    // ── 2. Navigate to Location / Navigate-Home page ──────────────────────────
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NavigateHomePage(patientId: _patientId),
+      ),
+    );
   }
 
   // ── GRID: Location + Medicine Strip ───────────────────────────────────────

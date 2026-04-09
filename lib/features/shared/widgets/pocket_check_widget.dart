@@ -2,15 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:neuroguard/core/services/pocket_check_service.dart';
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// PATIENT-SIDE WIDGET
-// Place this widget high in the patient app's widget tree (e.g. inside the
-// root Scaffold or a persistent overlay). It owns the PocketCheckService
-// lifecycle — initializing the Firestore command listener and the passive
-// inactivity monitor — without rendering any visible UI.
-//
-// Usage (patient app):
-//   PocketCheckInitializer(patientId: currentUser.uid, child: MyApp())
+// PATIENT-SIDE WIDGET — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 class PocketCheckInitializer extends StatefulWidget {
   final String patientId;
@@ -32,10 +26,6 @@ class _PocketCheckInitializerState extends State<PocketCheckInitializer> {
   @override
   void initState() {
     super.initState();
-    // Spin up the service on the patient device.
-    // This starts:
-    //  • _listenForCaregiverCommand() — watches Firestore for the caregiver trigger flag
-    //  • _startPassiveInactivityMonitor() — periodic background variance check
     _service = PocketCheckService(patientId: widget.patientId);
     _service.initialize();
   }
@@ -52,8 +42,9 @@ class _PocketCheckInitializerState extends State<PocketCheckInitializer> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CAREGIVER-SIDE CARD
-// Displays the real-time pocket status streamed from Firestore and provides
-// a button to remotely trigger an active check on the patient's device.
+// Now reads the new `pocket_status_uncertain` Firestore field and shows a
+// visual "(uncertain)" indicator when the 3-run vote was ambiguous but a
+// prior definitive status was used as fallback.
 // ─────────────────────────────────────────────────────────────────────────────
 class PocketCheckCard extends StatefulWidget {
   final String patientId;
@@ -64,13 +55,10 @@ class PocketCheckCard extends StatefulWidget {
 }
 
 class _PocketCheckCardState extends State<PocketCheckCard> {
-  String _status = 'UNKNOWN';
+  String _status     = 'UNKNOWN';
   String _lastCheckTime = '--:--';
-
-  // _isChecking drives the button lock-out. It is set to true immediately when
-  // the caregiver taps the button, then reset to false once Firestore confirms
-  // the patient device has finished and written a non-CHECKING status back.
-  bool _isChecking = false;
+  bool   _isChecking = false;
+  bool   _isUncertain = false;   // NEW: true when last-known fallback was used
 
   late final DocumentReference _doc;
 
@@ -87,14 +75,17 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
     _doc.snapshots().listen((snapshot) {
       if (!snapshot.exists || !mounted) return;
 
-      final data = snapshot.data() as Map<String, dynamic>?;
+      final data    = snapshot.data() as Map<String, dynamic>?;
       final sensors = data?['sensors'] as Map<String, dynamic>?;
 
       if (sensors != null) {
-        final newStatus = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+        final newStatus  = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+        final uncertain  = sensors['pocket_status_uncertain'] as bool? ?? false;
 
         setState(() {
-          _status = newStatus;
+          _status      = newStatus;
+          _isUncertain = uncertain;
+          _isChecking  = newStatus == 'CHECKING';
 
           final ts = sensors['pocket_check_timestamp'];
           if (ts != null && ts is Timestamp) {
@@ -102,39 +93,31 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
             _lastCheckTime =
             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
           }
-
-          // FIX: reset _isChecking when Firestore confirms the check has
-          // completed (any status other than CHECKING). Previously _isChecking
-          // was set to true locally on button press but never set back to false
-          // from the stream — it only tracked status == 'CHECKING', which
-          // correctly kept the button locked during the check, but this is now
-          // made explicit and symmetrical so the button always re-enables after
-          // the patient device writes its result.
-          _isChecking = newStatus == 'CHECKING';
         });
       }
     });
   }
 
-  // Caregiver presses this to trigger a remote pocket check on the patient device.
-  // Sets the Firestore flag that PocketCheckService._listenForCaregiverCommand()
-  // is watching, which causes the patient's phone to vibrate and run the
-  // accelerometer analysis.
   Future<void> _triggerCheck() async {
     if (_isChecking) return;
-    // Optimistically lock the button before the Firestore round-trip confirms.
     setState(() => _isChecking = true);
     await PocketCheckService.triggerRemoteCheck(widget.patientId);
-    // _isChecking will be corrected by _listenToStatus() once the patient
-    // device writes CHECKING → result back to Firestore.
   }
 
-  Color get _statusColor => switch (_status) {
-    'ON_PERSON' => const Color(0xFF7CFC00),  // Green
-    'ON_TABLE'  => const Color(0xFFFF4444),  // Red
-    'CHECKING'  => const Color(0xFFFFD700),  // Yellow
-    _           => const Color(0xFF888888),  // Grey
-  };
+  // When uncertain, desaturate the colour slightly to signal reduced confidence
+  Color get _statusColor {
+    final base = switch (_status) {
+      'ON_PERSON' => const Color(0xFF7CFC00),
+      'ON_TABLE'  => const Color(0xFFFF4444),
+      'CHECKING'  => const Color(0xFFFFD700),
+      _           => const Color(0xFF888888),
+    };
+    // Blend toward grey when uncertain
+    if (_isUncertain && _status != 'CHECKING') {
+      return Color.lerp(base, const Color(0xFF888888), 0.45)!;
+    }
+    return base;
+  }
 
   IconData get _statusIcon => switch (_status) {
     'ON_PERSON' => Icons.person_outline,
@@ -143,12 +126,17 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
     _           => Icons.help_outline,
   };
 
-  String get _statusLabel => switch (_status) {
-    'ON_PERSON' => 'On Person',
-    'ON_TABLE'  => 'Left on Surface',
-    'CHECKING'  => 'Checking...',
-    _           => 'Unknown',
-  };
+  String get _statusLabel {
+    if (_status == 'CHECKING') return 'Checking...';
+
+    final base = switch (_status) {
+      'ON_PERSON' => 'On Person',
+      'ON_TABLE'  => 'Left on Surface',
+      _           => 'Unknown',
+    };
+    // Show "(last known)" tag when uncertain to prevent caregiver confusion
+    return _isUncertain ? '$base (last known)' : base;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,7 +164,6 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
                     letterSpacing: 1.2,
                   ),
                 ),
-                // Trigger button (caregiver side) — disabled while a check is in flight
                 GestureDetector(
                   onTap: _isChecking ? null : _triggerCheck,
                   child: Container(
@@ -209,19 +196,23 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                          color: _statusColor.withOpacity(0.6), blurRadius: 8),
+                        color: _statusColor.withOpacity(0.6),
+                        blurRadius: 8,
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 10),
                 Icon(_statusIcon, color: _statusColor, size: 22),
                 const SizedBox(width: 8),
-                Text(
-                  _statusLabel,
-                  style: TextStyle(
-                    color: _statusColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    _statusLabel,
+                    style: TextStyle(
+                      color: _statusColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -241,14 +232,34 @@ class _PocketCheckCardState extends State<PocketCheckCard> {
 
             const SizedBox(height: 12),
 
-            // ON/OFF indicator
-            Text(
-              'ON/OFF PERSON',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
-                fontSize: 12,
-                letterSpacing: 1.0,
-              ),
+            // ON/OFF indicator + uncertain note
+            Row(
+              children: [
+                Text(
+                  'ON/OFF PERSON',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 12,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                if (_isUncertain) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: Colors.white.withOpacity(0.45),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Result unclear — showing last known',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.45),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

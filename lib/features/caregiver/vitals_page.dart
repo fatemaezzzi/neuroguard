@@ -380,9 +380,21 @@ class _VitalsPageState extends State<VitalsPage> {
                         Text('POCKET CHECK', style: hugeBlack),
                         GestureDetector(
                           onTap: () async {
-                            await PocketCheckService.triggerRemoteCheck(
-                              widget.patientId,
-                            );
+                            // Write the trigger flag to the PATIENT's Firestore doc.
+                            // The PocketCheckService running on the patient's phone
+                            // watches this flag and runs the vibrate + accelerometer
+                            // check entirely on the patient device.
+                            // Nothing sensor-related should run here on the caregiver phone.
+                            await PocketCheckService.triggerRemoteCheck(widget.patientId);
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Pocket check triggered on patient\'s phone'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
                           },
                           child: Image.asset(
                             'assets/arrow.png',
@@ -451,7 +463,6 @@ class _VitalsPageState extends State<VitalsPage> {
 
               ]),
             ),
-
           ],
         ),
       );
