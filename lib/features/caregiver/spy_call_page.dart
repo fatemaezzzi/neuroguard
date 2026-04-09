@@ -69,6 +69,7 @@ class _SpyCallPageState extends ConsumerState<SpyCallPage> {
   }
 
   Future<void> _startCall() async {
+    await SpyCallService.ensureInitialized();
     if (widget.videoEnabled) {
       await SpyCallService.triggerVideoCall(widget.patientId);
       ref.read(spyCallProvider.notifier).triggerAudioVideo();

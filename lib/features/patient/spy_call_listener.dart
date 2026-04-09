@@ -47,7 +47,7 @@ class _SpyCallListenerState extends ConsumerState<SpyCallListener> {
       final shouldCall = commands['trigger_spy_call'] as bool? ?? false;
       final mode = commands['spy_call_mode'] as String? ?? 'audio';
 
-      if (shouldCall && !_callActive) {
+      if (shouldCall && !_callActive && mounted) {
         _joinAsPatient(mode: mode);
       }
 
@@ -58,6 +58,7 @@ class _SpyCallListenerState extends ConsumerState<SpyCallListener> {
   }
 
   Future<void> _joinAsPatient({required String mode}) async {
+    await SpyCallService.ensureInitialized();
     _callActive = true;
     final isVideo = mode == 'video';
 

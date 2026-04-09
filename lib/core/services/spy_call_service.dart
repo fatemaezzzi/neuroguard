@@ -6,7 +6,18 @@ class SpyCallService {
 
   static RtcEngine? _engine;
 
-  static RtcEngine get engine => _engine!;
+  static RtcEngine get engine {
+    if (_engine == null) {
+      throw Exception("Agora engine not initialized. Call SpyCallService.init() first.");
+    }
+    return _engine!;
+  }
+
+  static Future<void> ensureInitialized() async {
+    if (_engine == null) {
+      await init();
+    }
+  }
 
   static Future<void> init() async {
     _engine = createAgoraRtcEngine();
