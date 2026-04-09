@@ -1,8 +1,12 @@
+// lib/core/services/alert_service.dart
+// DEBUG BUILD — print() logs added to confirm escalation callback is invoked.
+
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 import '../models/alert_model.dart';
 
 class AlertService {
@@ -10,57 +14,105 @@ class AlertService {
   factory AlertService() => _instance;
   AlertService._();
 
-  final _db = FirebaseFirestore.instance;
+  final _db          = FirebaseFirestore.instance;
+  static const _uuid = Uuid();
 
   static const _fcmUrl =
       'https://fcm.googleapis.com/v1/projects/neuroguard-1f865/messages:send';
+  static const _scopes =
+  ['https://www.googleapis.com/auth/firebase.messaging'];
 
-  static const _scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+  // ── Public API ────────────────────────────────────────────────────────────
 
+  /// T+0 entry point.
+  /// [onEscalationBegin] — caller injects EscalationService().begin here.
+  /// AlertService has zero import of EscalationService (no circular dep).
   Future<void> send({
-    required String patientId,
+    required String     patientId,
     required AlertModel alert,
+    Future<void> Function(String escalationId, AlertModel alert)?
+    onEscalationBegin,
   }) async {
-    // Write to Firestore first (alert log)
+    print('[AlertService] send() called — type: ${alert.type}  patient: $patientId');
+
+    final escalationId = alert.escalationId ?? _uuid.v4();
+
+    final alertToLog = AlertModel(
+      type:         alert.type,
+      message:      alert.message,
+      severity:     alert.severity,
+      escalationId: escalationId,
+      metadata: { ...alert.metadata, 'escalationId': escalationId },
+    );
+
+    // T+0 — Firestore log
     await _db
         .collection('alerts')
         .doc(patientId)
         .collection('entries')
-        .add(alert.toMap());
+        .add(alertToLog.toMap());
+    print('[AlertService] Firestore entry written — escalationId: $escalationId');
 
-    // Then push FCM to caregiver
+    // T+0 — FCM
+    await _sendFcmToCaregiver(patientId: patientId, alert: alertToLog);
+
+    // Hand off to escalation chain
+    if (onEscalationBegin != null) {
+      print('[AlertService] CALLING ESCALATION BEGIN — escalationId: $escalationId');
+      await onEscalationBegin(escalationId, alertToLog);
+    } else {
+      print('[AlertService] WARNING: onEscalationBegin callback is NULL — '
+          'escalation chain will NOT start.');
+      print('[AlertService] → Make sure you pass the callback when calling send().');
+      print('[AlertService] Example:');
+      print('[AlertService]   AlertService().send(');
+      print('[AlertService]     patientId: id,');
+      print('[AlertService]     alert: alert,');
+      print('[AlertService]     onEscalationBegin: (eid, a) => EscalationService().begin(');
+      print('[AlertService]       patientId: id, alert: a, escalationId: eid,');
+      print('[AlertService]     ),');
+      print('[AlertService]   );');
+    }
+  }
+
+  /// FCM-only send — used by EscalationService for tier re-pushes.
+  /// No Firestore write, no new escalation chain.
+  Future<void> sendFcmOnly({
+    required String     patientId,
+    required AlertModel alert,
+  }) async {
+    print('[AlertService] sendFcmOnly() — tier: ${alert.metadata['escalationTier']}');
     await _sendFcmToCaregiver(patientId: patientId, alert: alert);
   }
 
+  // ── FCM ───────────────────────────────────────────────────────────────────
+
   Future<void> _sendFcmToCaregiver({
-    required String patientId,
+    required String     patientId,
     required AlertModel alert,
   }) async {
     try {
-      // 1. Get caregiver FCM token from Firestore
-      // FIX: use 'paired_caregiver_id' (matches auth_service.dart / pairPatientToCaregiver)
-      final patientDoc = await _db.collection('users').doc(patientId).get();
-      final patientData = patientDoc.data();
-      final caregiverId = patientData?['paired_caregiver_id'] as String?;
-      if (caregiverId == null || caregiverId.isEmpty) return;
+      final patientDoc  = await _db.collection('users').doc(patientId).get();
+      final caregiverId = patientDoc.data()?['paired_caregiver_id'] as String?;
+      if (caregiverId == null || caregiverId.isEmpty) {
+        print('[AlertService] No paired_caregiver_id — FCM skipped.');
+        return;
+      }
 
       final caregiverDoc = await _db.collection('users').doc(caregiverId).get();
-      final fcmToken = caregiverDoc.data()?['fcmToken'] as String?;
-      if (fcmToken == null || fcmToken.isEmpty) return;
+      final fcmToken     = caregiverDoc.data()?['fcmToken'] as String?;
+      if (fcmToken == null || fcmToken.isEmpty) {
+        print('[AlertService] No fcmToken on caregiver doc — FCM skipped.');
+        return;
+      }
 
-      // 2. Load service account JSON from assets
-      final jsonStr = await rootBundle.loadString('assets/service_account.json');
-      final jsonMap = jsonDecode(jsonStr) as Map<String, dynamic>;
-
-      // 3. Get a short-lived OAuth2 access token
+      final jsonStr    = await rootBundle.loadString('assets/service_account.json');
+      final jsonMap    = jsonDecode(jsonStr) as Map<String, dynamic>;
       final credentials = ServiceAccountCredentials.fromJson(jsonMap);
-      final authClient = await clientViaServiceAccount(
-        credentials,
-        _scopes,
-        baseClient: http.Client(),
+      final authClient  = await clientViaServiceAccount(
+        credentials, _scopes, baseClient: http.Client(),
       );
 
-      // 4. Send FCM V1 message
       await authClient.post(
         Uri.parse(_fcmUrl),
         headers: {'Content-Type': 'application/json'},
@@ -69,17 +121,18 @@ class AlertService {
             'token': fcmToken,
             'notification': {
               'title': _titleFor(alert.type),
-              'body': alert.message,
+              'body':  alert.message,
             },
             'data': {
-              'type': alert.type.name,
-              'severity': alert.severity.name,
-              'patientId': patientId,
+              'type':           alert.type.name,
+              'severity':       alert.severity.name,
+              'patientId':      patientId,
+              'escalationId':   alert.escalationId ?? '',
+              'escalationTier':
+              (alert.metadata['escalationTier'] as int? ?? 0).toString(),
             },
             'android': {
-              'priority': alert.severity == AlertSeverity.critical
-                  ? 'HIGH'
-                  : 'NORMAL',
+              'priority': alert.severity == AlertSeverity.critical ? 'HIGH' : 'NORMAL',
               'notification': {
                 'channel_id': alert.type == AlertType.geoFence
                     ? 'safezone_breach'
@@ -89,11 +142,10 @@ class AlertService {
           },
         }),
       );
-
       authClient.close();
+      print('[AlertService] FCM sent to caregiver $caregiverId');
     } catch (e) {
-      // Firestore write already succeeded — don't crash the app
-      assert(() { print('[AlertService] FCM send failed: $e'); return true; }());
+      print('[AlertService] FCM send failed: $e');
     }
   }
 
