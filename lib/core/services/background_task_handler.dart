@@ -15,12 +15,10 @@
 //
 // TICK CADENCE
 //   ForegroundTaskEventAction.repeat(15000) → onRepeatEvent every 15 s.
-//   Debug:   4 ticks × 15 s = 1 minute
-//   Release: 60 ticks × 15 s = 15 minutes
+//   60 ticks × 15 s = 15 minutes
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,11 +66,8 @@ class BackgroundTaskHandler extends TaskHandler {
   String? _activePatientId;
 
   // Tick counter: onRepeatEvent fires every 15 s
-  // Debug → 4 ticks = 1 min | Release → 60 ticks = 15 min
-  static const int _debugCaptureEveryNTicks   = 4;
-  static const int _releaseCaptureEveryNTicks = 60;
-  static int get _captureEveryNTicks =>
-      kDebugMode ? _debugCaptureEveryNTicks : _releaseCaptureEveryNTicks;
+  // 60 ticks × 15 s = 15 minutes
+  static const int _captureEveryNTicks = 60;
   int _ticksSinceCapture = 0;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -109,8 +104,7 @@ class BackgroundTaskHandler extends TaskHandler {
     // ── Normal: count ticks and capture+sync at threshold ──────────────────
     _ticksSinceCapture++;
     debugPrint(
-      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks '
-          '(${kDebugMode ? "1 min" : "15 min"} interval)',
+      '[BGTask] Tick $_ticksSinceCapture/$_captureEveryNTicks (15 min interval)',
     );
 
     if (_ticksSinceCapture >= _captureEveryNTicks) {

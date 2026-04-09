@@ -49,14 +49,14 @@ import 'package:path/path.dart' as p;
 // ─── Public model ─────────────────────────────────────────────────────────────
 
 class LocationHistoryEntry {
-  final int?     id;          // SQLite row id (null when built from Firestore)
-  final String   patientId;
-  final double   latitude;
-  final double   longitude;
-  final double   accuracy;
-  final double   speed;
+  final int? id; // SQLite row id (null when built from Firestore)
+  final String patientId;
+  final double latitude;
+  final double longitude;
+  final double accuracy;
+  final double speed;
   final DateTime recordedAt;
-  final bool     synced;
+  final bool synced;
 
   const LocationHistoryEntry({
     this.id,
@@ -72,49 +72,51 @@ class LocationHistoryEntry {
   // ── SQLite ────────────────────────────────────────────────────────────────
 
   Map<String, dynamic> toSqlite() => {
-    'patient_id':  patientId,
-    'latitude':    latitude,
-    'longitude':   longitude,
-    'accuracy':    accuracy,
-    'speed':       speed,
+    'patient_id': patientId,
+    'latitude': latitude,
+    'longitude': longitude,
+    'accuracy': accuracy,
+    'speed': speed,
     'recorded_at': recordedAt.toUtc().toIso8601String(),
-    'synced':      synced ? 1 : 0,
+    'synced': synced ? 1 : 0,
   };
 
   factory LocationHistoryEntry.fromSqlite(Map<String, dynamic> row) =>
       LocationHistoryEntry(
-        id:         row['id'] as int?,
-        patientId:  row['patient_id'] as String,
-        latitude:   row['latitude'] as double,
-        longitude:  row['longitude'] as double,
-        accuracy:   (row['accuracy'] as num?)?.toDouble() ?? 0.0,
-        speed:      (row['speed']    as num?)?.toDouble() ?? 0.0,
+        id: row['id'] as int?,
+        patientId: row['patient_id'] as String,
+        latitude: row['latitude'] as double,
+        longitude: row['longitude'] as double,
+        accuracy: (row['accuracy'] as num?)?.toDouble() ?? 0.0,
+        speed: (row['speed'] as num?)?.toDouble() ?? 0.0,
         recordedAt: DateTime.parse(row['recorded_at'] as String).toLocal(),
-        synced:     (row['synced'] as int? ?? 0) == 1,
+        synced: (row['synced'] as int? ?? 0) == 1,
       );
 
   // ── Firestore ─────────────────────────────────────────────────────────────
 
   Map<String, dynamic> toFirestore() => {
-    'patientId':  patientId,
-    'latitude':   latitude,
-    'longitude':  longitude,
-    'accuracy':   accuracy,
-    'speed':      speed,
+    'patientId': patientId,
+    'latitude': latitude,
+    'longitude': longitude,
+    'accuracy': accuracy,
+    'speed': speed,
     'recordedAt': Timestamp.fromDate(recordedAt.toUtc()),
   };
 
   factory LocationHistoryEntry.fromFirestore(
-      DocumentSnapshot doc, String patientId) {
+    DocumentSnapshot doc,
+    String patientId,
+  ) {
     final d = doc.data() as Map<String, dynamic>;
     return LocationHistoryEntry(
-      patientId:  patientId,
-      latitude:   (d['latitude']  as num).toDouble(),
-      longitude:  (d['longitude'] as num).toDouble(),
-      accuracy:   (d['accuracy']  as num?)?.toDouble() ?? 0.0,
-      speed:      (d['speed']     as num?)?.toDouble() ?? 0.0,
+      patientId: patientId,
+      latitude: (d['latitude'] as num).toDouble(),
+      longitude: (d['longitude'] as num).toDouble(),
+      accuracy: (d['accuracy'] as num?)?.toDouble() ?? 0.0,
+      speed: (d['speed'] as num?)?.toDouble() ?? 0.0,
       recordedAt: (d['recordedAt'] as Timestamp).toDate().toLocal(),
-      synced:     true,
+      synced: true,
     );
   }
 }
@@ -125,7 +127,7 @@ class LocationHistoryService {
   // Singleton — NOTE: only meaningful within a single isolate.
   // The background isolate gets its own separate instance.
   static final LocationHistoryService _instance =
-  LocationHistoryService._internal();
+      LocationHistoryService._internal();
   factory LocationHistoryService() => _instance;
   LocationHistoryService._internal();
 
@@ -192,16 +194,25 @@ class LocationHistoryService {
         // Fallback to last known position if GPS is momentarily unavailable
         pos = await Geolocator.getLastKnownPosition();
       }
+      // AFTER getting the position, add this check:
       if (pos == null) return;
 
+      // NEW: skip poor-accuracy fixes for history (jitter from cold GPS)
+      if (pos.accuracy > 50) {
+        // Try last known as fallback only if it's recent (< 10 min old)
+        final alt = await Geolocator.getLastKnownPosition();
+        if (alt == null || alt.accuracy > 50) return;
+        pos = alt;
+      }
+
       final entry = LocationHistoryEntry(
-        patientId:  patientId,
-        latitude:   pos.latitude,
-        longitude:  pos.longitude,
-        accuracy:   pos.accuracy,
-        speed:      pos.speed.clamp(0.0, double.infinity),
+        patientId: patientId,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy,
+        speed: pos.speed.clamp(0.0, double.infinity),
         recordedAt: DateTime.now(),
-        synced:     false,
+        synced: false,
       );
 
       await saveEntry(entry);
@@ -218,11 +229,15 @@ class LocationHistoryService {
   /// Also trims the table to [_maxLocalRows] to prevent unbounded growth.
   Future<void> saveEntry(LocationHistoryEntry entry) async {
     final db = await _getDb();
-    await db.insert('location_history', entry.toSqlite(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      'location_history',
+      entry.toSqlite(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
 
     // Trim oldest rows for this patient beyond the cap
-    await db.execute('''
+    await db.execute(
+      '''
       DELETE FROM location_history
       WHERE patient_id = ? AND id NOT IN (
         SELECT id FROM location_history
@@ -230,7 +245,9 @@ class LocationHistoryService {
         ORDER BY recorded_at DESC
         LIMIT ?
       )
-    ''', [entry.patientId, entry.patientId, _maxLocalRows]);
+    ''',
+      [entry.patientId, entry.patientId, _maxLocalRows],
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -239,13 +256,13 @@ class LocationHistoryService {
 
   Future<List<LocationHistoryEntry>> getLocalHistory({
     required String patientId,
-    int limit  = 96,
+    int limit = 96,
     DateTime? from,
     DateTime? to,
   }) async {
     final db = await _getDb();
 
-    String where       = 'patient_id = ?';
+    String where = 'patient_id = ?';
     List<dynamic> args = [patientId];
 
     if (from != null) {
@@ -259,10 +276,10 @@ class LocationHistoryService {
 
     final rows = await db.query(
       'location_history',
-      where:     where,
+      where: where,
       whereArgs: args,
-      orderBy:   'recorded_at DESC',
-      limit:     limit,
+      orderBy: 'recorded_at DESC',
+      limit: limit,
     );
 
     return rows.map(LocationHistoryEntry.fromSqlite).toList();
@@ -321,10 +338,10 @@ class LocationHistoryService {
 
       final rows = await db.query(
         'location_history',
-        where:     'patient_id = ? AND synced = 0',
+        where: 'patient_id = ? AND synced = 0',
         whereArgs: [patientId],
-        orderBy:   'recorded_at ASC',
-        limit:     _syncBatchSize,
+        orderBy: 'recorded_at ASC',
+        limit: _syncBatchSize,
       );
 
       if (rows.isEmpty) return;
