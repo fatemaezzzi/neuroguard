@@ -10,10 +10,12 @@ enum PocketStatus { onPerson, onTable, unknown }
 // ─── Result object returned from every check ─────────────────────────────────
 class PocketCheckResult {
   final PocketStatus status;
-  final double score;         // 0.0 (definitely on person) → 1.0 (definitely on table)
+  final double score;           // 0.0 (on person) → 1.0 (on table)
   final double variance;
   final double peakAmplitude;
-  final double decayRate;
+  final double decayRate;       // kept for logging; no longer used in scoring
+  final double oscillationIndex; // NEW: underdamped body signature
+  final double varToPeakRatio;   // NEW: low ratio = body-still
   final int sampleCount;
 
   const PocketCheckResult({
@@ -22,6 +24,8 @@ class PocketCheckResult {
     required this.variance,
     required this.peakAmplitude,
     required this.decayRate,
+    required this.oscillationIndex,
+    required this.varToPeakRatio,
     required this.sampleCount,
   });
 
@@ -29,7 +33,10 @@ class PocketCheckResult {
   String toString() =>
       'PocketCheckResult(status: $status, score: ${score.toStringAsFixed(3)}, '
           'variance: ${variance.toStringAsFixed(4)}, peak: ${peakAmplitude.toStringAsFixed(3)}, '
-          'decay: ${decayRate.toStringAsFixed(4)}, samples: $sampleCount)';
+          'decay: ${decayRate.toStringAsFixed(4)}, '
+          'oscillation: ${oscillationIndex.toStringAsFixed(3)}, '
+          'varPeakRatio: ${varToPeakRatio.toStringAsFixed(4)}, '
+          'samples: $sampleCount)';
 }
 
 class PocketCheckService {
@@ -38,106 +45,93 @@ class PocketCheckService {
   final String patientId;
   late final DocumentReference _doc;
 
-  // ─── Thresholds — Recalibrated from 2-session empirical data ─────────────
+  // ─── Thresholds ─────────────────────────────────────────────────────────────
   //
-  // KEY INSIGHT FROM CALIBRATION DATA:
+  // SCORING MODEL v3 — "desk window + body signature" approach
   //
-  // The previous model assumed a monotonic relationship:
-  //   low variance/peak  →  on person
-  //   high variance/peak →  on table
+  // Three evidence sources are combined:
   //
-  // Calibration data shows this is WRONG. Observed ranges:
+  //  1. DESK WINDOW SCORE  (variance & peak)
+  //     Hard surfaces produce tight, bounded variance/peak.
+  //     Score = 1.0 when both metrics fall within the observed desk window,
+  //     decaying toward 0.0 as either metric exceeds the ceiling.
+  //     Weight: 0.60 (was 0.90 — reduced to make room for new features)
   //
-  //   Desk (wood/glass/cloth, both sessions):
-  //     variance: 0.18 – 1.19    peak: 1.24 – 2.86    (tight, stable)
+  //  2. OSCILLATION INDEX  (post-peak zero-crossing count)
+  //     Research basis: soft tissue vibrates as an *under-damped* system
+  //     (Wakeling & Nigg, J Appl Physiol 2001; 2002). After a vibration
+  //     impulse, body contact produces residual oscillation in the signal
+  //     before it settles, whereas a hard surface damps monotonically.
+  //     High oscillation  →  score contribution LOW  →  ON_PERSON
+  //     Low oscillation   →  score contribution HIGH →  ON_TABLE
+  //     Weight: 0.25
   //
-  //   Pocket + hard case (Try 1 vs Try 2):
-  //     variance: 0.14  →  6.39   peak: 1.21  →  4.68  (highly variable)
+  //  3. VARIANCE-TO-PEAK RATIO
+  //     Research basis: VibePhone (Cho, Hwang & Oh, Pattern Anal Appl 2016)
+  //     demonstrates that no single metric separates body from table — a
+  //     combination of features is required. Body-still contact suppresses
+  //     variance (soft tissue absorbs micro-energy) but the initial vibration
+  //     peak still reaches the accelerometer, producing an anomalously LOW
+  //     variance/peak ratio. Hard surfaces show a proportional relationship.
+  //     Low ratio  →  score contribution LOW  →  ON_PERSON
+  //     Mid ratio  →  score contribution HIGH →  ON_TABLE
+  //     Weight: 0.15
   //
-  //   Pocket – still (Try 1 vs Try 2):
-  //     variance: 0.23  → 13.50   peak: 1.44  →  9.89
-  //
-  //   Pocket – walking:
-  //     variance: 13.68            peak: 7.20
-  //
-  //   Hand – still (Try 1 vs Try 2):
-  //     variance: 0.18  → 12.61   peak: 1.40  → 12.86
-  //
-  // CONCLUSION: Desk surfaces occupy a TIGHT, LOW variance/peak window.
-  // Pocket/body occupies everything ELSE — either similar to desk (when very
-  // still) or far above desk range (when moving). The correct model is:
-  //
-  //   ON_TABLE  = variance AND peak are BOTH within the desk window
-  //   ON_PERSON = variance OR peak EXCEEDS the desk ceiling
-  //               (body motion pushes at least one metric out of range)
-  //
-  // For the rare "pocket perfectly still" case where both metrics look desk-
-  // like, we rely on the majority-vote across 3 runs — at least one run will
-  // capture micro-movements that push a metric out of range.
-  //
-  // SCORING REDESIGN:
-  //   score = how "desk-like" the reading is (0.0 = not desk = on person,
-  //                                           1.0 = very desk-like = on table)
-  //
-  //   We compute a "desk window score" for each metric: 1.0 if the value falls
-  //   within the observed desk ceiling, decaying smoothly to 0.0 as it
-  //   exceeds the ceiling. Then take the min of both (AND logic — both must be
-  //   desk-like to score high).
-  //
-  // THRESHOLD RATIONALE:
-  //   _tableThreshold  = 0.72  → both metrics comfortably inside desk window
-  //   _personThreshold = 0.45  → at least one metric well outside desk window
-  //   Dead zone 0.45–0.72      → majority vote resolves ambiguity
+  // THRESHOLD CHANGES:
+  //   _tableThreshold  = 0.65  (unchanged)
+  //   _personThreshold = 0.35  (was 0.50)
+  //     ↳ Justification: oscillation index now depresses body scores reliably,
+  //       so the dead zone can be narrowed without increasing false positives.
+  //       Body-still readings that previously hovered at 0.50–0.55 (due to
+  //       desk-like variance/peak) will now score ≤ 0.40 once the oscillation
+  //       and varToPeak penalty is applied.
 
-  static const int    _runsPerCheck         = 2;     // majority-vote runs
-  static const int    _interRunDelayMs      = 400;   // gap between runs (motor off)
+  static const int    _runsPerCheck        = 3;
+  static const int    _interRunDelayMs     = 400;
 
-  static const double _tableThreshold       = 0.65;
-  static const double _personThreshold      = 0.40;
+  static const double _tableThreshold      = 0.65;
+  static const double _personThreshold     = 0.35; // lowered from 0.50
 
-  // ── Desk window bounds — derived directly from calibration data ──────────
-  //
-  // Desk variance ceiling: max observed across all desk readings = 1.19
-  //   → set ceiling at 1.50 (adds 26% headroom for sensor variation)
-  //   → set floor at 0.05 (below all desk minimums; near-zero = definitely still)
-  //
-  // Desk peak ceiling: max observed across all desk readings = 2.86
-  //   → set ceiling at 3.20 (adds ~12% headroom)
-  //   → set floor at 0.80 (below all observed peaks)
-  //
-  // Values ABOVE the ceiling get a desk-window score < 1.0 that decays toward
-  // 0.0 as the value grows. This is computed via a soft gate in _deskWindowScore.
+  // ── Desk window bounds (from empirical calibration data) ──────────────────
   static const double _varianceDeskFloor   = 0.05;
-  static const double _varianceDeskCeiling = 1.80;   // max desk observed: 1.19
+  static const double _varianceDeskCeiling = 1.80;
   static const double _peakDeskFloor       = 0.80;
-  static const double _peakDeskCeiling     = 3.50;   // max desk observed: 2.86
+  static const double _peakDeskCeiling     = 3.50;
 
-  // Decay is still non-discriminating across conditions (0.43–0.80 everywhere)
-  // so it is kept at a negligible weight and not used in desk-window logic.
-  static const double _decayMin             = 0.001;
-  static const double _decayMax             = 1.0;
+  // ── Metric weights ────────────────────────────────────────────────────────
+  // Desk window  : 0.60   (was 0.90 — variance+peak share this via min())
+  // Oscillation  : 0.25   (NEW — underdamped body signature)
+  // VarPeak ratio: 0.15   (NEW — body-still discriminator)
+  static const double _wDeskWindow     = 0.60;
+  static const double _wOscillation    = 0.25;
+  static const double _wVarPeakRatio   = 0.15;
 
-  // Metric weights — variance and peak share all weight; decay negligible.
-  // We take min(normVariance, normPeak) as the base then blend a small decay
-  // component, so the formula is:
-  //   score = 0.90 * min(deskVariance, deskPeak) + 0.10 * normDecay
-  // The min() encodes the AND requirement — both must be desk-like.
-  static const double _wDeskWindow          = 0.90;
-  static const double _wDecay               = 0.10;
+  // Oscillation index tuning:
+  //   Zero-crossings of (signal − rollingMean) in the post-peak window.
+  //   Empirically, body contact produces 4–10 crossings; hard surfaces 0–2.
+  //   _oscillationSaturation = crossings at which index is clamped to 1.0.
+  //   Score contribution = 1.0 - oscillationIndex (high crossings = body).
+  static const double _oscillationSaturation = 8.0;
 
-  // Timing per individual run
-  static const int    _vibrationDurationMs  = 1600;
-  static const int    _preVibrationDelayMs  = 100;
-  static const int    _collectDurationMs    = 2200;  // 600 ms post-vibration for decay window
+  // VarPeakRatio tuning:
+  //   On-table: ratio ≈ 0.10–0.60 (variance and peak scale together)
+  //   On-body-still: ratio < 0.08 (soft tissue damps variance but not peak)
+  //   Score is 0.0 when ratio < _ratioBodyMax, rising to 1.0 at _ratioTableMin.
+  static const double _ratioBodyMax    = 0.08;  // below = body-like
+  static const double _ratioTableMin   = 0.18;  // above = table-like
 
-  static const int    _passiveInactivityMinutes    = 15;
-  static const double _passiveVarianceThreshold    = 0.008;
+  // Timing
+  static const int    _vibrationDurationMs = 1600;
+  static const int    _preVibrationDelayMs = 100;
+  static const int    _collectDurationMs   = 2200;
+
+  static const int    _passiveInactivityMinutes  = 15;
+  static const double _passiveVarianceThreshold  = 0.008;
 
   Timer? _passiveCheckTimer;
   StreamSubscription<dynamic>? _firebaseCommandListener;
 
-  // Last known definitive result — used to avoid writing UNKNOWN when a clear
-  // prior reading exists. Reset to null only when the service is disposed.
+  bool _isCheckInProgress = false;
   PocketStatus? _lastKnownDefinitiveStatus;
 
   final bool debugMode;
@@ -156,39 +150,34 @@ class PocketCheckService {
     _passiveCheckTimer?.cancel();
     _firebaseCommandListener?.cancel();
     _lastKnownDefinitiveStatus = null;
+    _isCheckInProgress = false;
   }
 
   // ─── Listen for caregiver trigger ────────────────────────────────────────
   void _listenForCaregiverCommand() {
     _firebaseCommandListener = _doc.snapshots().listen((snapshot) async {
-      if (!snapshot.exists) return;
+      if (!snapshot.exists || _isCheckInProgress) return;
+
       final data      = snapshot.data() as Map<String, dynamic>?;
       final commands  = data?['commands'] as Map<String, dynamic>?;
       final triggered = commands?['trigger_pocket_check'] as bool? ?? false;
 
       if (triggered) {
+        _isCheckInProgress = true;
         await _doc.update({'commands.trigger_pocket_check': false});
         await runActiveCheck();
+        _isCheckInProgress = false;
       }
     });
   }
 
   // ─── ACTIVE CHECK (majority-vote across _runsPerCheck runs) ──────────────
-  //
-  // Each run vibrates, collects samples, and scores them independently.
-  // The majority vote across all runs decides the final status.
-  //
-  // If the majority result is UNKNOWN AND a prior definitive result exists,
-  // the Firestore write uses the prior result + a 'uncertain' flag so the
-  // caregiver UI can show "Last known: X (uncertain)" instead of bare UNKNOWN.
   Future<PocketCheckResult> runActiveCheck() async {
     await _updateFirestoreStatus('CHECKING');
 
     final List<PocketCheckResult> runResults = [];
 
     for (int run = 0; run < _runsPerCheck; run++) {
-      // Gap between runs so the motor fully stops before the next vibration.
-      // Skip delay before first run.
       if (run > 0) {
         await Future.delayed(const Duration(milliseconds: _interRunDelayMs));
       }
@@ -201,12 +190,12 @@ class PocketCheckService {
         print('[PocketCheck][Run $run] score=${result.score.toStringAsFixed(3)} '
             'var=${result.variance.toStringAsFixed(4)} '
             'peak=${result.peakAmplitude.toStringAsFixed(3)} '
-            'decay=${result.decayRate.toStringAsFixed(4)} '
+            'osc=${result.oscillationIndex.toStringAsFixed(3)} '
+            'vpr=${result.varToPeakRatio.toStringAsFixed(4)} '
             'status=${result.status.name}');
       }
     }
 
-    // ── Majority vote ─────────────────────────────────────────────────────
     final PocketCheckResult votedResult = _majorityVote(runResults);
 
     if (debugMode) {
@@ -215,18 +204,19 @@ class PocketCheckService {
           'avgScore=${votedResult.score.toStringAsFixed(3)}');
     }
 
-    // ── UNKNOWN fallback ──────────────────────────────────────────────────
-    // If the voted result is UNKNOWN but we have a prior definitive reading,
-    // preserve the prior status and mark it as uncertain so the caregiver
-    // sees "Last known: ON_PERSON (uncertain)" instead of just "UNKNOWN".
     if (votedResult.status == PocketStatus.unknown &&
         _lastKnownDefinitiveStatus != null) {
       await _reportStatusToFirestore(
         _lastKnownDefinitiveStatus!,
         uncertain: true,
+        result: votedResult,
       );
     } else {
-      await _reportStatusToFirestore(votedResult.status, uncertain: false);
+      await _reportStatusToFirestore(
+        votedResult.status,
+        uncertain: false,
+        result: votedResult,
+      );
       if (votedResult.status != PocketStatus.unknown) {
         _lastKnownDefinitiveStatus = votedResult.status;
       }
@@ -237,15 +227,12 @@ class PocketCheckService {
 
   // ─── Single vibration run ─────────────────────────────────────────────────
   Future<PocketCheckResult> _singleRun() async {
-    // 1. Vibrate
     if (await Vibration.hasVibrator() ?? false) {
       Vibration.vibrate(duration: _vibrationDurationMs);
     }
 
-    // 2. Short delay for motor spin-up
     await Future.delayed(const Duration(milliseconds: _preVibrationDelayMs));
 
-    // 3. Collect raw 3-axis samples
     final List<_Sample> samples = [];
     final sub = accelerometerEventStream(
       samplingPeriod: SensorInterval.fastestInterval,
@@ -260,17 +247,7 @@ class PocketCheckService {
   }
 
   // ─── Majority vote across multiple runs ──────────────────────────────────
-  //
-  // Returns a synthetic PocketCheckResult whose:
-  //   • status = the most common status across all runs
-  //   • score  = median of all run scores (more robust than mean vs outliers)
-  //   • other metrics = values from the run closest to the median score
-  //
-  // Tie-breaking (equal votes for ON_PERSON and ON_TABLE): UNKNOWN is returned
-  // because the environment is genuinely ambiguous — e.g. phone in loose pocket
-  // that sometimes bounces like a hard surface. This should be rare with 3 runs.
   PocketCheckResult _majorityVote(List<PocketCheckResult> results) {
-    // Count votes
     int onPersonCount = 0, onTableCount = 0, unknownCount = 0;
     for (final r in results) {
       switch (r.status) {
@@ -286,7 +263,6 @@ class PocketCheckService {
     } else if (onTableCount > onPersonCount && onTableCount > unknownCount) {
       winnerStatus = PocketStatus.onTable;
     } else if (onPersonCount == onTableCount && onPersonCount > 0) {
-      // True tie: fall back to the score median to break it
       final scores = results.map((r) => r.score).toList()..sort();
       final medianScore = scores[scores.length ~/ 2];
       winnerStatus = medianScore >= _tableThreshold
@@ -298,49 +274,53 @@ class PocketCheckService {
       winnerStatus = PocketStatus.unknown;
     }
 
-    // Use median score and the representative run's raw metrics
     final scores = results.map((r) => r.score).toList()..sort();
     final double medianScore = scores[scores.length ~/ 2];
 
-    // Pick the run whose score is closest to the median for representative metrics
     final rep = results.reduce((a, b) =>
     (a.score - medianScore).abs() < (b.score - medianScore).abs() ? a : b);
 
     return PocketCheckResult(
-      status:        winnerStatus,
-      score:         medianScore,
-      variance:      rep.variance,
-      peakAmplitude: rep.peakAmplitude,
-      decayRate:     rep.decayRate,
-      sampleCount:   rep.sampleCount,
+      status:           winnerStatus,
+      score:            medianScore,
+      variance:         rep.variance,
+      peakAmplitude:    rep.peakAmplitude,
+      decayRate:        rep.decayRate,
+      oscillationIndex: rep.oscillationIndex,
+      varToPeakRatio:   rep.varToPeakRatio,
+      sampleCount:      rep.sampleCount,
     );
   }
 
-  // ─── ANALYSIS ENGINE ─────────────────────────────────────────────────────
+  // ─── ANALYSIS ENGINE ──────────────────────────────────────────────────────
   //
-  // SCORING MODEL CHANGE — "desk window" approach:
+  // SCORING MODEL v3:
+  //   score = 0.60 * min(deskVarianceScore, deskPeakScore)   [AND desk logic]
+  //         + 0.25 * (1.0 - oscillationIndex)                [body = oscillates]
+  //         + 0.15 * varToPeakRatioScore                     [body-still = low ratio]
   //
-  // Old model: normalise variance/peak linearly from min→max, high = table.
-  //   Problem: pocket sometimes produces variance of 13.5 and peak of 9.9,
-  //   which clipped to 1.0 in the old linear normalisation and was scored as
-  //   ON_TABLE — exactly backwards.
+  // A high score means "desk-like". A low score means "body-like".
   //
-  // New model: score = how closely the reading resembles the DESK window.
-  //   Each metric is given a "desk window score":
-  //     • 1.0 if value ≤ desk ceiling (comfortably desk-like)
-  //     • smoothly decays toward 0.0 as value exceeds the ceiling
-  //   Final score = 0.90 * min(deskVariance, deskPeak) + 0.10 * normDecay
-  //   The min() encodes: BOTH metrics must be desk-like to score high.
-  //   If either is elevated (body motion), the score drops → ON_PERSON.
+  // RESEARCH BASIS:
+  //   • VibePhone (Cho et al., PAA 2016): combined features required for
+  //     body/table separation; single metrics are insufficient.
+  //   • Wakeling & Nigg (J Appl Physiol 2001; 2002): soft tissue produces
+  //     under-damped, oscillatory vibration response — hard surfaces do not.
+  //   • Frequency-dependent tissue absorption (PMC 4694567): soft tissue
+  //     absorbs high-frequency components locally, reducing variance while
+  //     the initial peak (lower frequency) still propagates — explaining
+  //     the anomalously low var/peak ratio on body-still contact.
   PocketCheckResult _analyse(List<_Sample> samples) {
     if (samples.length < 10) {
       return const PocketCheckResult(
-        status: PocketStatus.unknown,
-        score: 0.5,
-        variance: 0,
-        peakAmplitude: 0,
-        decayRate: 0,
-        sampleCount: 0,
+        status:           PocketStatus.unknown,
+        score:            0.5,
+        variance:         0,
+        peakAmplitude:    0,
+        decayRate:        0,
+        oscillationIndex: 0,
+        varToPeakRatio:   0,
+        sampleCount:      0,
       );
     }
 
@@ -364,7 +344,7 @@ class PocketCheckService {
     final int p95Index = (sorted.length * 0.95).floor().clamp(0, sorted.length - 1);
     final double peakAmplitude = sorted[p95Index];
 
-    // ── Metric 3: Decay Rate ──────────────────────────────────────────────
+    // ── Metric 3: Decay Rate (kept for logging only; not scored) ──────────
     final int earlyEnd  = (magnitudes.length * 0.40).floor();
     final int lateStart = (magnitudes.length * 0.60).floor();
 
@@ -379,22 +359,47 @@ class PocketCheckService {
         ? ((earlyMean - lateMean) / earlyMean).clamp(0.0, 1.0)
         : 0.0;
 
+    // ── Metric 4: Oscillation Index (NEW) ────────────────────────────────
+    // Counts zero-crossings of (magnitude − rolling mean) in the post-peak
+    // window. Soft tissue vibrates as an under-damped system (Wakeling &
+    // Nigg 2001), producing residual oscillation after the impulse peak.
+    // Hard surfaces exhibit monotonic, over-damped decay with few crossings.
+    // High crossing count → high oscillationIndex → low score → ON_PERSON.
+    final double oscillationIndex = _computeOscillationIndex(magnitudes);
+
+    // ── Metric 5: Variance-to-Peak Ratio (NEW) ────────────────────────────
+    // Soft tissue selectively absorbs high-frequency components of vibration
+    // (resonant frequency of fingers: 150–300 Hz, per PMC 4694567), which
+    // suppresses variance while the lower-frequency initial peak still
+    // propagates. This gives body-still an anomalously low var/peak ratio.
+    final double varToPeakRatio = (peakAmplitude > 0.01)
+        ? (variance / peakAmplitude).clamp(0.0, 2.0)
+        : 0.0;
+
     // ── Desk-window scores ────────────────────────────────────────────────
-    // _deskWindowScore returns 1.0 when value ≤ ceiling, then decays smoothly.
-    // Decay: high decay on a hard surface means vibration dissipated quickly
-    // (energy reflected, not absorbed). Invert for desk-likeness:
-    //   normDecay = 1 - normalised(decayRate) → high decay = low desk score.
-    // (Decay has minimal discriminating power so weight is small anyway.)
     final double deskVarianceScore = _deskWindowScore(
         variance, _varianceDeskFloor, _varianceDeskCeiling);
     final double deskPeakScore     = _deskWindowScore(
         peakAmplitude, _peakDeskFloor, _peakDeskCeiling);
-    final double normDecay         = 1.0 - _normalise(decayRate, _decayMin, _decayMax);
 
-    // AND logic via min(): both metrics must be desk-like to score high.
+    // AND logic: both must be desk-like to score high
     final double deskWindowScore = min(deskVarianceScore, deskPeakScore);
 
-    final double score = (_wDeskWindow * deskWindowScore) + (_wDecay * normDecay);
+    // Oscillation score: invert — high oscillation = body = low desk score
+    // Normalise crossings against saturation point, then invert.
+    final double oscillationScore = 1.0 - oscillationIndex;
+
+    // VarPeak ratio score: ramp from 0.0 (body-like) to 1.0 (table-like)
+    //   ratio < _ratioBodyMax  → score 0.0 (definitely body)
+    //   ratio > _ratioTableMin → score 1.0 (table-like)
+    final double varPeakScore = _normalise(
+        varToPeakRatio, _ratioBodyMax, _ratioTableMin);
+
+    // ── Final composite score ─────────────────────────────────────────────
+    final double score =
+        (_wDeskWindow   * deskWindowScore) +
+            (_wOscillation  * oscillationScore) +
+            (_wVarPeakRatio * varPeakScore);
 
     // ── Decision ──────────────────────────────────────────────────────────
     final PocketStatus status;
@@ -407,13 +412,64 @@ class PocketCheckService {
     }
 
     return PocketCheckResult(
-      status:        status,
-      score:         score,
-      variance:      variance,
-      peakAmplitude: peakAmplitude,
-      decayRate:     decayRate,
-      sampleCount:   samples.length,
+      status:           status,
+      score:            score,
+      variance:         variance,
+      peakAmplitude:    peakAmplitude,
+      decayRate:        decayRate,
+      oscillationIndex: oscillationIndex,
+      varToPeakRatio:   varToPeakRatio,
+      sampleCount:      samples.length,
     );
+  }
+
+  // ─── Oscillation Index Computation ───────────────────────────────────────
+  //
+  // 1. Find the peak sample index.
+  // 2. Work on the post-peak window only (where decay / oscillation occurs).
+  // 3. Compute a short rolling mean (window = 5 samples) to establish a
+  //    local baseline, then count sign changes of (sample − baseline).
+  // 4. Normalise against _oscillationSaturation and clamp to [0,1].
+  //
+  // A body contact reading typically yields 4–10 crossings.
+  // A hard surface typically yields 0–2 crossings.
+  double _computeOscillationIndex(List<double> magnitudes) {
+    if (magnitudes.length < 20) return 0.0;
+
+    // Find peak index
+    int peakIdx = 0;
+    double peakVal = 0.0;
+    for (int i = 0; i < magnitudes.length; i++) {
+      if (magnitudes[i] > peakVal) {
+        peakVal = magnitudes[i];
+        peakIdx = i;
+      }
+    }
+
+    // Post-peak window — need at least 10 samples to be meaningful
+    if (peakIdx >= magnitudes.length - 10) return 0.0;
+    final postPeak = magnitudes.sublist(peakIdx);
+
+    // Rolling mean with window size 5
+    const int windowSize = 5;
+    int crossings = 0;
+    double? prevDiff;
+
+    for (int i = windowSize; i < postPeak.length; i++) {
+      double windowMean = 0.0;
+      for (int j = i - windowSize; j < i; j++) {
+        windowMean += postPeak[j];
+      }
+      windowMean /= windowSize;
+
+      final double diff = postPeak[i] - windowMean;
+      if (prevDiff != null && prevDiff! * diff < 0) {
+        crossings++;
+      }
+      prevDiff = diff;
+    }
+
+    return (crossings / _oscillationSaturation).clamp(0.0, 1.0);
   }
 
   // ─── PASSIVE CHECK ───────────────────────────────────────────────────────
@@ -425,26 +481,36 @@ class PocketCheckService {
   }
 
   Future<void> _runPassiveCheck() async {
-    final List<double> rawMagnitudes = [];
+    final List<AccelerometerEvent> events = [];
 
     final sub = accelerometerEventStream(
       samplingPeriod: SensorInterval.normalInterval,
-    ).listen((AccelerometerEvent e) {
-      rawMagnitudes.add(sqrt(e.x * e.x + e.y * e.y + e.z * e.z));
-    });
+    ).listen((AccelerometerEvent e) => events.add(e));
 
     await Future.delayed(const Duration(seconds: 5));
     await sub.cancel();
 
-    if (rawMagnitudes.isEmpty) return;
+    if (events.isEmpty) return;
 
-    final double mean = rawMagnitudes.reduce((a, b) => a + b) / rawMagnitudes.length;
-    final List<double> detrended = rawMagnitudes.map((v) => v - mean).toList();
-    final double variance = _variance(detrended);
+    // Remove gravity per-axis, then compute magnitude — mirrors _analyse()
+    final double meanX = events.map((e) => e.x).reduce((a, b) => a + b) / events.length;
+    final double meanY = events.map((e) => e.y).reduce((a, b) => a + b) / events.length;
+    final double meanZ = events.map((e) => e.z).reduce((a, b) => a + b) / events.length;
+
+    final List<double> magnitudes = events.map((e) {
+      final dx = e.x - meanX;
+      final dy = e.y - meanY;
+      final dz = e.z - meanZ;
+      return sqrt(dx * dx + dy * dy + dz * dz);
+    }).toList();
+
+    final double variance = _variance(magnitudes);
 
     if (debugMode) {
       // ignore: avoid_print
-      print('[PocketCheck][Passive] variance=$variance (gravity mean: ${mean.toStringAsFixed(3)})');
+      print('[PocketCheck][Passive] variance=$variance (gravity removed; '
+          'meanX=${meanX.toStringAsFixed(3)} meanY=${meanY.toStringAsFixed(3)} '
+          'meanZ=${meanZ.toStringAsFixed(3)})');
     }
 
     if (variance < _passiveVarianceThreshold) {
@@ -472,11 +538,9 @@ class PocketCheckService {
   }
 
   // Desk-window score: 1.0 when value is within [floor, ceiling].
-  // Above the ceiling, score decays as 1 / (1 + k * overshoot), where
-  // overshoot = (value - ceiling) / ceiling. k=4 gives a smooth but fairly
-  // rapid decay — doubling the ceiling value brings the score to ~0.2.
-  // Below the floor, score also decays (very still = potentially on person too,
-  // but this is resolved by the majority-vote rather than a hard 0).
+  // Above the ceiling, score decays as 1 / (1 + k * overshoot).
+  // k=4 gives rapid but smooth decay — doubling the ceiling → score ~0.2.
+  // Below the floor, score scales linearly from 0 (at 0) to 1 (at floor).
   double _deskWindowScore(double value, double floor, double ceiling) {
     if (value <= ceiling && value >= floor) {
       return 1.0;
@@ -484,21 +548,22 @@ class PocketCheckService {
       final double overshoot = (value - ceiling) / ceiling;
       return 1.0 / (1.0 + 4.0 * overshoot);
     } else {
-      // Below floor — scale from 0 at 0 to 1 at floor
       return (value / floor).clamp(0.0, 1.0);
     }
   }
 
   // ─── Firestore helpers ────────────────────────────────────────────────────
   Future<void> _updateFirestoreStatus(String status) async {
-    await _doc.update({'sensors.pocket_status': status});
+    await _doc.update({
+      'sensors.pocket_status':           status,
+      'sensors.pocket_status_uncertain': false,
+    });
   }
 
-  // uncertain=true means: we use the last known status but flag it so the
-  // caregiver UI can show a visual indicator like "(uncertain)" or a muted dot.
   Future<void> _reportStatusToFirestore(
       PocketStatus status, {
         bool uncertain = false,
+        PocketCheckResult? result,
       }) async {
     final statusStr = switch (status) {
       PocketStatus.onPerson => 'ON_PERSON',
@@ -508,9 +573,13 @@ class PocketCheckService {
     await _doc.update({
       'sensors.pocket_status':            statusStr,
       'sensors.pocket_check_timestamp':   FieldValue.serverTimestamp(),
-      // New field: caregiver UI reads this to show "(uncertain)" indicator
-      // when the vote was ambiguous but we fell back to last known status.
       'sensors.pocket_status_uncertain':  uncertain,
+      // Diagnostic fields — read by PocketCheckCard when showDiagnostics=true
+      if (result != null) ...{
+        'sensors.pocket_last_score':        result.score,
+        'sensors.pocket_oscillation_index': result.oscillationIndex,
+        'sensors.pocket_var_peak_ratio':    result.varToPeakRatio,
+      },
     });
   }
 

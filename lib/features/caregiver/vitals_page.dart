@@ -33,6 +33,11 @@ class _VitalsPageState extends State<VitalsPage> {
   // All sensor-mat UI elements are hidden while this is false.
   bool _matConnected = false;
 
+  // FIX 4 — Track pocket_status_uncertain so the vitals blob shows
+  // "(last known)" just like PocketCheckCard does. Without this field
+  // the blob silently displayed a stale status with no caveat.
+  bool _isPocketUncertain = false;
+
   StreamSubscription? _firestoreSub;
   StreamSubscription? _windowsSub;
 
@@ -109,6 +114,10 @@ class _VitalsPageState extends State<VitalsPage> {
         _pocketStatus      = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
         _lastVibrationTime = timeStr;
         _matConnected      = matHasData;
+
+        // FIX 4 — Read pocket_status_uncertain so _pocketStatusLabel can
+        // append "(last known)" when the service fell back to prior status.
+        _isPocketUncertain = sensors['pocket_status_uncertain'] as bool? ?? false;
 
         // FIX 2 continued — only update sleep display when mat is connected.
         // If mat is not connected these values stay at their initial defaults
@@ -191,12 +200,22 @@ class _VitalsPageState extends State<VitalsPage> {
     _               => Colors.grey,
   };
 
-  String get _pocketStatusLabel => switch (_pocketStatus) {
-    'ON_PERSON' => 'ON PERSON',
-    'ON_TABLE'  => 'NOT ON PERSON',
-    'CHECKING'  => 'CHECKING...',
-    _           => 'UNKNOWN',
-  };
+  // FIX 4 — _pocketStatusLabel now appends "(last known)" when the service
+  // fell back to a prior definitive status after an ambiguous vote.
+  // Previously this field was ignored here even though PocketCheckCard
+  // already handled it correctly.
+  String get _pocketStatusLabel {
+    final base = switch (_pocketStatus) {
+      'ON_PERSON' => 'ON PERSON',
+      'ON_TABLE'  => 'NOT ON PERSON',
+      'CHECKING'  => 'CHECKING...',
+      _           => 'UNKNOWN',
+    };
+    if (_isPocketUncertain && _pocketStatus != 'CHECKING') {
+      return '$base (last known)';
+    }
+    return base;
+  }
 
   // ── Build ────────────────────────────────────────────────────────────────
   @override
@@ -424,6 +443,8 @@ class _VitalsPageState extends State<VitalsPage> {
                       const SizedBox(height: 4),
                       Text(_lastVibrationTime, style: smallBold),
                       const SizedBox(height: 2),
+                      // FIX 4 — _pocketStatusLabel now includes "(last known)"
+                      // when _isPocketUncertain is true, matching PocketCheckCard.
                       Text(_pocketStatusLabel, style: hugeBlack),
                     ],
                   ),

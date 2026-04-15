@@ -1,5 +1,6 @@
 // lib/core/services/alert_service.dart
-// DEBUG BUILD — print() logs added to confirm escalation callback is invoked.
+// OPTIMISED BUILD — reduced alert latency via OAuth client caching,
+// FCM token caching, and parallel FCM + Firestore dispatch.
 
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,6 +23,61 @@ class AlertService {
   static const _scopes =
   ['https://www.googleapis.com/auth/firebase.messaging'];
 
+  // ── OAuth client cache ────────────────────────────────────────────────────
+  // Negotiated once per app session. googleapis_auth auto-refreshes the access
+  // token before expiry — we never need to rebuild this client.
+  AutoRefreshingAuthClient? _cachedAuthClient;
+
+  Future<AutoRefreshingAuthClient> _getAuthClient() async {
+    if (_cachedAuthClient != null) return _cachedAuthClient!;
+    final jsonStr     = await rootBundle.loadString('assets/service_account.json');
+    final jsonMap     = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final credentials = ServiceAccountCredentials.fromJson(jsonMap);
+    _cachedAuthClient = await clientViaServiceAccount(
+      credentials, _scopes, baseClient: http.Client(),
+    );
+    print('[AlertService] OAuth client created and cached.');
+    return _cachedAuthClient!;
+  }
+
+  // ── FCM token cache ───────────────────────────────────────────────────────
+  // patientId → caregiver FCM token.
+  // Eliminates 2 Firestore reads (patient doc + caregiver doc) on every alert
+  // after the first call. Call invalidateFcmTokenCache() after re-pairing.
+  final Map<String, String> _fcmTokenCache = {};
+
+  Future<String?> _getCaregiverFcmToken(String patientId) async {
+    if (_fcmTokenCache.containsKey(patientId)) {
+      print('[AlertService] FCM token served from cache.');
+      return _fcmTokenCache[patientId];
+    }
+
+    final patientDoc  = await _db.collection('users').doc(patientId).get();
+    final caregiverId = patientDoc.data()?['paired_caregiver_id'] as String?;
+    if (caregiverId == null || caregiverId.isEmpty) {
+      print('[AlertService] No paired_caregiver_id — FCM skipped.');
+      return null;
+    }
+
+    final caregiverDoc = await _db.collection('users').doc(caregiverId).get();
+    final fcmToken     = caregiverDoc.data()?['fcmToken'] as String?;
+    if (fcmToken == null || fcmToken.isEmpty) {
+      print('[AlertService] No fcmToken on caregiver doc — FCM skipped.');
+      return null;
+    }
+
+    _fcmTokenCache[patientId] = fcmToken;
+    print('[AlertService] FCM token fetched and cached for patient $patientId.');
+    return fcmToken;
+  }
+
+  /// Call this when a caregiver re-pairs or their FCM token rotates,
+  /// so the next alert picks up the fresh token from Firestore.
+  void invalidateFcmTokenCache(String patientId) {
+    _fcmTokenCache.remove(patientId);
+    print('[AlertService] FCM token cache invalidated for patient $patientId.');
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   /// T+0 entry point.
@@ -36,25 +92,26 @@ class AlertService {
     print('[AlertService] send() called — type: ${alert.type}  patient: $patientId');
 
     final escalationId = alert.escalationId ?? _uuid.v4();
-
-    final alertToLog = AlertModel(
+    final alertToLog   = AlertModel(
       type:         alert.type,
       message:      alert.message,
       severity:     alert.severity,
       escalationId: escalationId,
-      metadata: { ...alert.metadata, 'escalationId': escalationId },
+      metadata: {...alert.metadata, 'escalationId': escalationId},
     );
 
-    // T+0 — Firestore log
-    await _db
-        .collection('alerts')
-        .doc(patientId)
-        .collection('entries')
-        .add(alertToLog.toMap());
-    print('[AlertService] Firestore entry written — escalationId: $escalationId');
-
-    // T+0 — FCM
-    await _sendFcmToCaregiver(patientId: patientId, alert: alertToLog);
+    // T+0 — FCM + Firestore log dispatched IN PARALLEL.
+    // The push notification reaches the caregiver without waiting for the
+    // Firestore write to complete.
+    await Future.wait([
+      _sendFcmToCaregiver(patientId: patientId, alert: alertToLog),
+      _db
+          .collection('alerts')
+          .doc(patientId)
+          .collection('entries')
+          .add(alertToLog.toMap()),
+    ]);
+    print('[AlertService] FCM + Firestore write dispatched — escalationId: $escalationId');
 
     // Hand off to escalation chain
     if (onEscalationBegin != null) {
@@ -92,26 +149,10 @@ class AlertService {
     required AlertModel alert,
   }) async {
     try {
-      final patientDoc  = await _db.collection('users').doc(patientId).get();
-      final caregiverId = patientDoc.data()?['paired_caregiver_id'] as String?;
-      if (caregiverId == null || caregiverId.isEmpty) {
-        print('[AlertService] No paired_caregiver_id — FCM skipped.');
-        return;
-      }
+      final fcmToken = await _getCaregiverFcmToken(patientId);
+      if (fcmToken == null) return;
 
-      final caregiverDoc = await _db.collection('users').doc(caregiverId).get();
-      final fcmToken     = caregiverDoc.data()?['fcmToken'] as String?;
-      if (fcmToken == null || fcmToken.isEmpty) {
-        print('[AlertService] No fcmToken on caregiver doc — FCM skipped.');
-        return;
-      }
-
-      final jsonStr    = await rootBundle.loadString('assets/service_account.json');
-      final jsonMap    = jsonDecode(jsonStr) as Map<String, dynamic>;
-      final credentials = ServiceAccountCredentials.fromJson(jsonMap);
-      final authClient  = await clientViaServiceAccount(
-        credentials, _scopes, baseClient: http.Client(),
-      );
+      final authClient = await _getAuthClient();
 
       await authClient.post(
         Uri.parse(_fcmUrl),
@@ -132,7 +173,9 @@ class AlertService {
               (alert.metadata['escalationTier'] as int? ?? 0).toString(),
             },
             'android': {
-              'priority': alert.severity == AlertSeverity.critical ? 'HIGH' : 'NORMAL',
+              'priority': alert.severity == AlertSeverity.critical
+                  ? 'HIGH'
+                  : 'NORMAL',
               'notification': {
                 'channel_id': alert.type == AlertType.geoFence
                     ? 'safezone_breach'
@@ -142,10 +185,12 @@ class AlertService {
           },
         }),
       );
-      authClient.close();
-      print('[AlertService] FCM sent to caregiver $caregiverId');
+      print('[AlertService] FCM sent successfully.');
     } catch (e) {
       print('[AlertService] FCM send failed: $e');
+      // Reset cached auth client so the next call renegotiates cleanly
+      // in case the token was revoked or expired unrecoverably.
+      _cachedAuthClient = null;
     }
   }
 
