@@ -17,7 +17,6 @@
 //   • GeofenceNotifier owns ALL mutable geofence state so TrackerPage never
 //     calls setState() for alert/breach logic — only for map animation.
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
