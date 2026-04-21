@@ -6,6 +6,19 @@ import 'package:neuroguard/features/shared/widgets/navigation_widget.dart';
 import 'package:neuroguard/core/services/pocket_check_service.dart';
 import 'package:neuroguard/features/shared/settings_screen.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VitalsPage v4.0
+//
+// NEW in v4.0:
+//   • Heartbeat timer checks esp32LastSeen every 30 seconds.
+//   • One missed window = 3 min + 90 s buffer = 270 s.
+//     If now - esp32LastSeen > 270 s → ESP32 is offline.
+//   • When offline: _matConnected = false, all readings cleared,
+//     chart empty, bar graphs hidden, status shows NOT CONNECTED.
+//   • When ESP32 comes back online (adapter plugged in again):
+//     _matConnected flips back to true automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class VitalsPage extends StatefulWidget {
   final String patientId;
   const VitalsPage({super.key, required this.patientId});
@@ -25,18 +38,26 @@ class _VitalsPageState extends State<VitalsPage> {
   List<FlSpot> _microMovementSpots          = [];
   List<Map<String, dynamic>> _windowHistory = [];
 
-  bool _isHypersomnia = false;
+  bool _isHypersomnia  = false;
   bool _isUnresponsive = false;
 
-  // FIX 1 — Mat connection flag.
-  // Stays false until the ESP32 sends a real known bed_status value.
-  // All sensor-mat UI elements are hidden while this is false.
-  bool _matConnected = false;
+  // Mat connection flag — false until ESP32 sends a real known state
+  // AND the heartbeat timer confirms the data is recent.
+  bool _matConnected   = false;
 
-  // FIX 4 — Track pocket_status_uncertain so the vitals blob shows
-  // "(last known)" just like PocketCheckCard does. Without this field
-  // the blob silently displayed a stale status with no caveat.
+  // Pocket check uncertain flag
   bool _isPocketUncertain = false;
+
+  // ── Heartbeat tracking ───────────────────────────────────────────────────
+  // esp32LastSeen: the epoch timestamp written by the ESP32 every window.
+  // heartbeatTimer: checks every 30 s whether the ESP32 has gone silent.
+  //
+  // Disconnection threshold = 1 window (180 s) + 90 s buffer = 270 s.
+  // This means: if the ESP32 misses exactly one window, Flutter detects
+  // it within 30 s of the next heartbeat check.
+  int?  _esp32LastSeen;
+  Timer? _heartbeatTimer;
+  static const int _disconnectThresholdSeconds = 270; // 3 min + 90 s buffer
 
   StreamSubscription? _firestoreSub;
   StreamSubscription? _windowsSub;
@@ -51,18 +72,72 @@ class _VitalsPageState extends State<VitalsPage> {
     super.initState();
     _listenToFirestore();
     _listenToWindows();
+    _startHeartbeatTimer();
   }
 
   @override
   void dispose() {
     _firestoreSub?.cancel();
     _windowsSub?.cancel();
+    _heartbeatTimer?.cancel();
     super.dispose();
   }
 
+  // ── Heartbeat timer ──────────────────────────────────────────────────────
+  // Runs every 30 seconds. Compares current time to the last timestamp
+  // written by the ESP32. If the gap exceeds the threshold, the ESP32 is
+  // considered offline and the UI resets to NOT CONNECTED.
+  void _startHeartbeatTimer() {
+    _heartbeatTimer = Timer.periodic(
+      const Duration(seconds: 30),
+          (_) => _checkHeartbeat(),
+    );
+  }
+
+  void _checkHeartbeat() {
+    if (!mounted) return;
+
+    // If we have never received a timestamp, mat was never connected.
+    if (_esp32LastSeen == null) {
+      if (_matConnected) {
+        _resetMatState();
+      }
+      return;
+    }
+
+    final int nowEpoch =
+        DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final int gap = nowEpoch - _esp32LastSeen!;
+
+    debugPrint('[Heartbeat] Gap since last ESP32 write: ${gap}s '
+        '(threshold: ${_disconnectThresholdSeconds}s)');
+
+    if (gap > _disconnectThresholdSeconds && _matConnected) {
+      debugPrint('[Heartbeat] ESP32 offline — resetting UI');
+      _resetMatState();
+    }
+  }
+
+  // ── Reset all mat-related state ──────────────────────────────────────────
+  // Called when the heartbeat detects the ESP32 has gone offline.
+  // Clears every field that was populated by ESP32 data so the UI
+  // goes back to exactly the same state as when the page first loaded
+  // with no mat connected.
+  void _resetMatState() {
+    setState(() {
+      _matConnected        = false;
+      _sleepStatus         = 'UNKNOWN';
+      _sleepSubtitle       = '--';
+      _isHypersomnia       = false;
+      _isUnresponsive      = false;
+      _microMovementSpots  = [];
+      _windowHistory       = [];
+      // Do NOT reset _esp32LastSeen — we keep the last known timestamp
+      // so the heartbeat can keep comparing until new data arrives.
+    });
+  }
+
   // ── Responsive text helper ───────────────────────────────────────────────
-  // Scales font size proportionally to screen width so nothing overflows
-  // on small phones and text is not tiny on large ones.
   TextStyle _textStyle({
     required BuildContext context,
     double scale = 1.0,
@@ -80,7 +155,7 @@ class _VitalsPageState extends State<VitalsPage> {
     );
   }
 
-  // ── Firestore listener 1: users/{patientId} (live status + pocket check) ─
+  // ── Firestore listener 1: users/{patientId} ──────────────────────────────
   void _listenToFirestore() {
     _firestoreSub = FirebaseFirestore.instance
         .collection('users')
@@ -93,7 +168,7 @@ class _VitalsPageState extends State<VitalsPage> {
       final sensors = data?['sensors'] as Map<String, dynamic>?;
       if (sensors == null) return;
 
-      // Pocket check timestamp (unchanged)
+      // Pocket check timestamp
       final ts = sensors['pocket_check_timestamp'];
       String timeStr = '--:--';
       if (ts is Timestamp) {
@@ -105,24 +180,36 @@ class _VitalsPageState extends State<VitalsPage> {
 
       final bedState = sensors['bed_status']?.toString() ?? 'UNKNOWN';
 
-      // FIX 2 — Mat is only considered connected when bed_status is a real
-      // known state written by the ESP32. 'UNKNOWN' or empty means the ESP32
-      // has never written to this field — mat is not connected.
+      // Mat has real data only when bed_status is a known ESP32 state
       final bool matHasData = bedState != 'UNKNOWN' && bedState.isNotEmpty;
 
+      // ── Read heartbeat timestamp ────────────────────────────────────────
+      // esp32LastSeen is written by the ESP32 every window.
+      // We store it here so _checkHeartbeat() can compare it to now.
+      final dynamic lastSeenRaw = sensors['esp32LastSeen'];
+      if (lastSeenRaw != null) {
+        int? parsed;
+        if (lastSeenRaw is int)    parsed = lastSeenRaw;
+        if (lastSeenRaw is String) parsed = int.tryParse(lastSeenRaw);
+        if (parsed != null) {
+          _esp32LastSeen = parsed;
+          // If we just received a fresh timestamp, the ESP32 is alive.
+          // Run the heartbeat check immediately so the UI reconnects
+          // without waiting for the next 30-second timer tick.
+
+          _matConnected = true;
+        }
+      }
+
       setState(() {
-        _pocketStatus      = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
-        _lastVibrationTime = timeStr;
-        _matConnected      = matHasData;
+        _pocketStatus       = sensors['pocket_status']?.toString() ?? 'UNKNOWN';
+        _lastVibrationTime  = timeStr;
+        _isPocketUncertain  = sensors['pocket_status_uncertain'] as bool? ?? false;
 
-        // FIX 4 — Read pocket_status_uncertain so _pocketStatusLabel can
-        // append "(last known)" when the service fell back to prior status.
-        _isPocketUncertain = sensors['pocket_status_uncertain'] as bool? ?? false;
-
-        // FIX 2 continued — only update sleep display when mat is connected.
-        // If mat is not connected these values stay at their initial defaults
-        // but they won't be shown in the UI anyway.
+        // Only update mat-related fields when mat has real data
+        // AND the heartbeat has not already declared it offline.
         if (matHasData) {
+          _matConnected   = true;
           _sleepStatus    = _labelForState(bedState);
           _sleepSubtitle  = _subtitleForState(bedState);
           _isHypersomnia  = sensors['isHypersomnia'] == true;
@@ -133,9 +220,6 @@ class _VitalsPageState extends State<VitalsPage> {
   }
 
   // ── Firestore listener 2: sleepSessions/{patientId}/windows ─────────────
-  // Feeds the line chart and bar graphs.
-  // _matConnected gates display of these — data may arrive but won't show
-  // until the live status confirms the mat is connected.
   void _listenToWindows() {
     _windowsSub = FirebaseFirestore.instance
         .collection('sleepSessions')
@@ -200,10 +284,6 @@ class _VitalsPageState extends State<VitalsPage> {
     _               => Colors.grey,
   };
 
-  // FIX 4 — _pocketStatusLabel now appends "(last known)" when the service
-  // fell back to a prior definitive status after an ambiguous vote.
-  // Previously this field was ignored here even though PocketCheckCard
-  // already handled it correctly.
   String get _pocketStatusLabel {
     final base = switch (_pocketStatus) {
       'ON_PERSON' => 'ON PERSON',
@@ -228,8 +308,7 @@ class _VitalsPageState extends State<VitalsPage> {
           child: Column(
             children: [
 
-              // FIX 5 — Alert banners only show when mat is connected AND
-              // the alert flag is actually true. Never shown when mat is off.
+              // Alert banners — only when mat is connected AND alert is real
               if (_matConnected && _isUnresponsive)
                 _alertBanner(
                   context,
@@ -349,11 +428,6 @@ class _VitalsPageState extends State<VitalsPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-
-                              // FIX 3 — Status text only shown when mat is
-                              // connected. When not connected shows a small
-                              // neutral label so the blob is not empty but
-                              // no misleading state is displayed.
                               if (_matConnected) ...[
                                 Text(
                                   _sleepStatus,
@@ -367,13 +441,13 @@ class _VitalsPageState extends State<VitalsPage> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ] else ...[
+                                // Mat disconnected — neutral label, nothing else
                                 Text(
                                   'NOT CONNECTED',
                                   style: smallBody,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
-
                             ],
                           ),
                         ),
@@ -385,7 +459,6 @@ class _VitalsPageState extends State<VitalsPage> {
             ),
 
             // ── POCKET CHECK blob ──────────────────────────────────────────
-            // Pocket check is independent of mat — always shown.
             Positioned(
               top: topPocket, left: 0, right: 0, height: h3,
               child: Stack(children: [
@@ -399,17 +472,15 @@ class _VitalsPageState extends State<VitalsPage> {
                         Text('POCKET CHECK', style: hugeBlack),
                         GestureDetector(
                           onTap: () async {
-                            // Write the trigger flag to the PATIENT's Firestore doc.
-                            // The PocketCheckService running on the patient's phone
-                            // watches this flag and runs the vibrate + accelerometer
-                            // check entirely on the patient device.
-                            // Nothing sensor-related should run here on the caregiver phone.
-                            await PocketCheckService.triggerRemoteCheck(widget.patientId);
-
+                            await PocketCheckService.triggerRemoteCheck(
+                              widget.patientId,
+                            );
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Pocket check triggered on patient\'s phone'),
+                                  content: Text(
+                                    'Pocket check triggered on patient\'s phone',
+                                  ),
                                   duration: Duration(seconds: 2),
                                 ),
                               );
@@ -430,7 +501,6 @@ class _VitalsPageState extends State<VitalsPage> {
             ),
 
             // ── LAST VIBRATION blob ────────────────────────────────────────
-            // Last vibration is independent of mat — always shown.
             Positioned(
               top: topVibra, left: 0, right: 0, height: h4,
               child: Stack(children: [
@@ -443,8 +513,6 @@ class _VitalsPageState extends State<VitalsPage> {
                       const SizedBox(height: 4),
                       Text(_lastVibrationTime, style: smallBold),
                       const SizedBox(height: 2),
-                      // FIX 4 — _pocketStatusLabel now includes "(last known)"
-                      // when _isPocketUncertain is true, matching PocketCheckCard.
                       Text(_pocketStatusLabel, style: hugeBlack),
                     ],
                   ),
@@ -471,30 +539,26 @@ class _VitalsPageState extends State<VitalsPage> {
                   ),
                 ),
 
-                // FIX 4 — Line chart only rendered when mat is connected AND
-                // at least one real window of data has arrived.
-                // When mat is not connected the graph area is completely empty
-                // — no flat zero line, no dummy data, nothing.
+                // Chart only shown when mat connected AND data exists
                 if (_matConnected && _microMovementSpots.isNotEmpty)
                   Positioned(
                     left: 16, right: 16,
                     top: h1 * 0.38, bottom: 16,
                     child: _buildChart(),
                   ),
-
               ]),
             ),
+
           ],
         ),
       );
     });
   }
 
-  // ── Line chart — real micro-movement data ────────────────────────────────
+  // ── Line chart ───────────────────────────────────────────────────────────
   Widget _buildChart() {
     final spots = _microMovementSpots;
-
-    final maxY = spots.isNotEmpty
+    final maxY  = spots.isNotEmpty
         ? (spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.3)
         .clamp(10.0, 200.0)
         : 50.0;
@@ -527,8 +591,7 @@ class _VitalsPageState extends State<VitalsPage> {
 
   // ── Bar graph section ────────────────────────────────────────────────────
   Widget _buildBarGraphSection(BuildContext context) {
-    // FIX 6 — When mat is not connected OR no window data has arrived yet,
-    // return an empty SizedBox — no text, no placeholder, nothing at all.
+    // Hidden completely when mat not connected or no data
     if (!_matConnected || _windowHistory.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -662,8 +725,6 @@ class _VitalsPageState extends State<VitalsPage> {
               final label = raw >= 1000
                   ? '${(raw / 1000).toStringAsFixed(1)}k'
                   : raw.toStringAsFixed(0);
-
-              // Only show value label when bar is short enough to have room
               final bool showLabel = barH < 65;
 
               return Expanded(
